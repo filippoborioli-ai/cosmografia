@@ -21,6 +21,15 @@ oggetto cliccato; il sistema deve essere il più reale e accurato possibile. Dev
 5. Ogni scheda può avere `frontier` ("Cosa non sappiamo ancora") e `claude` ("Nota di Claude": breve riflessione
    ancorata ai dati, mai enfatica).
 
+## Repository e posizione
+
+- Cartella locale: `C:\Users\borio\Desktop\Cartelle\00_github progetti\cosmografia` (spostata da `progetti/claudio v1`
+  il 16/09/2026; convenzione dell'utente: nome cartella = nome repo, vedi `clone_all.ps1` nella cartella superiore).
+- GitHub: https://github.com/filippoborioli-ai/cosmografia (pubblico, necessario per GitHub Pages gratuito).
+- Sito: https://filippoborioli-ai.github.io/cosmografia/ (Pages dal ramo `main`, radice; `.nojekyll` presente).
+- Dopo ogni modifica: `node tools/test-levels.js`, `node tools/build.js`, commit (con riga Co-Authored-By) e push:
+  Pages si aggiorna in 1–2 minuti.
+
 ## Come si avvia
 
 - **Sviluppo**: doppio clic su `index.html` (script classici, niente moduli ES → funziona da `file://`).
