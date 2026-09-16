@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cosmografia di Claude</title>
+<meta name="description" content="L'universo esplorabile, dal pianeta Terra al bordo dell'universo osservabile, costruito su dati e articoli scientifici reali.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&family=Spectral:ital,wght@0,300;0,400;0,500;1,400;1,500&display=swap">
+<!--build:css-->
+<link rel="stylesheet" href="css/style.css">
+<!--/build:css-->
+</head>
+<body>
+<canvas id="scene" aria-label="Vista tridimensionale dell'universo"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="sel-ring" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <p class="wordmark">Cosmografia<span>l'universo come lo leggo io</span></p>
+    <nav class="crumbs" id="crumbs" aria-label="Livelli di scala"></nav>
+  </div>
+  <div class="tools">
+    <div class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      <input id="search" type="search" placeholder="Cerca: Titano, M87, TRAPPIST-1…" autocomplete="off" aria-label="Cerca un oggetto">
+      <div class="results" id="results" hidden></div>
+    </div>
+    <button class="iconbtn" id="t-labels" aria-pressed="true" title="Etichette (L)" aria-label="Mostra etichette">
+      <svg viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1.3"/></svg></button>
+    <button class="iconbtn" id="t-orbits" aria-pressed="true" title="Orbite e guide (O)" aria-label="Mostra orbite e guide">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="10" ry="4.5"/><circle cx="12" cy="12" r="2.2"/></svg></button>
+    <button class="iconbtn" id="t-const" aria-pressed="true" title="Costellazioni (C)" aria-label="Mostra costellazioni">
+      <svg viewBox="0 0 24 24"><path d="M4 18 9 9l6 4 5-8"/><circle cx="4" cy="18" r="1.4"/><circle cx="9" cy="9" r="1.4"/><circle cx="15" cy="13" r="1.4"/><circle cx="20" cy="5" r="1.4"/></svg></button>
+    <button class="iconbtn" id="t-exag" aria-pressed="false" title="Ingrandisci i pianeti ×600 (solo Sistema solare)" aria-label="Ingrandisci pianeti">
+      <svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6M10 7v6M7 10h6"/></svg></button>
+    <button class="iconbtn" id="t-help" title="Come leggo l'universo" aria-label="Informazioni e legenda">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg></button>
+  </div>
+</header>
+
+<aside class="scale" id="scale" aria-label="Scala logaritmica delle distanze">
+  <div class="bar" id="scale-bar"><div class="now" id="scale-now"></div></div>
+  <div class="anchors" id="scale-anchors"></div>
+</aside>
+
+<div class="readout" id="readout" aria-live="off">
+  <div id="ro-dist"></div>
+  <div id="ro-light"></div>
+  <div class="hint">Trascina per ruotare · rotella o pizzico per lo zoom · clic per selezionare · doppio clic per avvicinarti · tasto destro per spostarti · Backspace per salire di scala</div>
+</div>
+
+<aside class="info" id="info" hidden aria-live="polite">
+  <header>
+    <div class="eyebrow" id="i-eyebrow"></div>
+    <h2 id="i-title"></h2>
+    <div class="actions" id="i-actions"></div>
+    <button class="iconbtn close" id="i-close" aria-label="Chiudi scheda"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  </header>
+  <div class="body" id="i-body"></div>
+</aside>
+
+<div class="timebar" id="timebar" hidden>
+  <button id="tb-play" aria-label="Pausa o riprendi il tempo"><svg viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg></button>
+  <span class="date" id="tb-date"></span>
+  <button data-speed="1">1×</button>
+  <button data-speed="60">1 min/s</button>
+  <button data-speed="3600">1 ora/s</button>
+  <button data-speed="86400">1 giorno/s</button>
+  <button data-speed="2592000">1 mese/s</button>
+  <button data-speed="31557600">1 anno/s</button>
+  <button id="tb-now">Adesso</button>
+</div>
+
+<div id="fade"><p id="fade-text"></p></div>
+<div class="toast" id="toast" style="opacity:0"></div>
+
+<div class="intro" id="intro">
+  <div class="card" role="dialog" aria-labelledby="intro-title">
+    <h1 id="intro-title">L'universo, <em>come lo leggo io</em></h1>
+    <p class="lead">Ho raccolto misure, cataloghi e articoli scientifici e li ho trasformati in un unico spazio navigabile: dalle lune di Saturno al fondo cosmico a microonde, 27 ordini di grandezza. Ogni oggetto ha una scheda con i dati, le fonti e il punto in cui la conoscenza finisce.</p>
+    <ul class="principles">
+      <li><b>Scale vere</b>Distanze e dimensioni reali. Si passa da una scala all'altra zoomando: sette livelli annidati, dal km al miliardo di anni luce.</li>
+      <li><b>Calcolato, non disegnato</b>Pianeti dagli elementi orbitali JPL alla data di oggi, Luna dall'Astronomical Almanac, distanze cosmiche integrando le equazioni di Friedmann con Planck 2018.</li>
+      <li><b>Onesto sull'incertezza</b>Ogni scheda dichiara che cosa è misurato e che cosa è modello, stima o ipotesi. Le strutture generate statisticamente sono segnate come tali.</li>
+    </ul>
+    <div class="legend" aria-label="Legenda dei livelli di certezza">
+      <span class="chip mis">Misurato</span><span class="chip mod">Modello da dati</span><span class="chip sti">Stima · indicativo</span><span class="chip ipo">Ipotesi</span><span class="chip ill">Illustrativo</span>
+    </div>
+    <div class="go">
+      <button class="btn primary" id="go-earth">Parti dalla Terra</button>
+      <button class="btn" id="go-solar">Sistema solare</button>
+      <button class="btn" id="go-cosmos">Parti dal bordo dell'universo</button>
+    </div>
+    <p class="foot" id="intro-foot">Texture della Terra: NASA Blue Marble e Black Marble (pubblico dominio). Motore 3D: three.js. Le posizioni di satelliti artificiali, sonde e lune minori sono indicative.</p>
+  </div>
+</div>
+
+<!--build:js-->
+<script src="vendor/three.min.js"></script>
+<script>window.THREE || document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"><\/script>');</script>
+<script src="js/data/textures.js"></script>
+<script src="js/core/util.js"></script>
+<script src="js/core/shaders.js"></script>
+<script src="js/core/factory.js"></script>
+<script src="js/core/engine.js"></script>
+<script src="js/data/sources.js"></script>
+<script src="js/data/solar.js"></script>
+<script src="js/data/stars.js"></script>
+<script src="js/data/galactic.js"></script>
+<script src="js/data/cosmic.js"></script>
+<script src="js/levels/bodies.js"></script>
+<script src="js/levels/solar.js"></script>
+<script src="js/levels/stellar.js"></script>
+<script src="js/levels/galactic.js"></script>
+<script src="js/levels/cosmic.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+<!--/build:js-->
+</body>
+</html>
