@@ -85,6 +85,21 @@ il polo IAU va invertito se `W` ha tasso negativo (`retro`). SBDB senza `full-pr
 - Cambio livello già costruito: istantaneo con breve dissolvenza del canvas (evento `dip`); livello nuovo: schermo di caricamento.
 - Suggerimento "↓ zooma per entrare: …" quando il fuoco è un portale vicino alla soglia (`#portal-hint`).
 
+## Video di presentazione — `tools/record-video.js`
+
+Registra il volo dal bordo dell'universo osservabile alla Terra (~1 minuto, 1920×1080, 30 fps) con titolo iniziale,
+didascalia per ogni scala, distanza di vista e titolo finale. Output: `video/cosmografia-presentazione.mp4` (cartella
+ignorata da git: il video pesa decine di MB).
+
+- Rendering deterministico: `evaluateOnNewDocument` sostituisce `requestAnimationFrame` e `performance.now` con un
+  orologio virtuale (`window.__step(ms)`), quindi il video è fluido anche se ogni fotogramma richiede 200 ms.
+- Tutti i livelli vengono costruiti prima di registrare; il volo usa `E.travel` con `E.tripSpeed = 0.4`.
+- Ai cambi di livello Python/Pillow applica una dissolvenza incrociata di 12 fotogrammi; poi ffmpeg (H.264, CRF 20, max 12 Mbps).
+- Requisiti fuori dal repo: `npm i puppeteer-core@23 ffmpeg-static@5` in una cartella, indicata con `MODULES=…/node_modules`.
+  Prova veloce: `MAXF=240` (8 secondi).
+- Registrato il 17/09/2026: con `--force_high_performance_gpu` Chrome headless usa la RTX 4070 (senza, usa la Intel UHD); `?q=1.6`.
+  Circa 4 fotogrammi al secondo di registrazione (screenshot 1080p), quindi ~7 minuti per il video intero.
+
 ## Architettura (ordine di caricamento in `index.html`)
 
 | File | Ruolo |

@@ -201,7 +201,7 @@
     // Dall'esterno il fondo cosmico è un velo tenue (si vede la rete dentro); dall'interno torna pieno
     update(inst, ctx) {
       const d = ctx.E.camera.position.length();
-      const target = d > inst.Rcmb * 1.02 ? 0.2 : 0.85;
+      const target = d > inst.Rcmb * 1.02 ? 0.2 : 0.32;
       const u = inst.cmb.material.uniforms.uOpacity;
       u.value += (target - u.value) * Math.min(1, ctx.dt * 4 || 1);
     },

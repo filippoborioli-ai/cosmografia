@@ -282,8 +282,10 @@ window.U = window.U || {};
   // passo del viaggio, chiamato ogni frame
   function tripStep(dt) {
     const T = E.trip, c = E.ctrl, def = E.cur.def;
+    const speed = E.tripSpeed || 1; // < 1 per voli più lenti (es. registrazione video)
+    dt *= speed;
     const approach = (from, to, max) => (Math.abs(to - from) <= max ? to : from + Math.sign(to - from) * max);
-    if (performance.now() - T.t0 > 90000) { E.skipTrip(); return; } // salvagente
+    if (performance.now() - T.t0 > 90000 / speed) { E.skipTrip(); return; } // salvagente
     const idx = T.path.indexOf(E.cur.id);
     if (idx < 0) {
       // risalita: zoom indietro costante, l'uscita dal livello avviene da sola
