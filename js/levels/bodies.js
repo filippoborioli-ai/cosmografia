@@ -17,6 +17,12 @@ window.U = window.U || {};
     group.add(spin);
     const mats = [mat];
     let atmo = null, ring = null, ringMat = null;
+    if (p.look && p.look.clouds) {
+      const cm = U.cloudMaterial();
+      const clouds = new THREE.Mesh(new THREE.SphereGeometry(R * 1.006, segs || 96, Math.round((segs || 96) * 0.66)), cm);
+      spin.add(clouds); // ruotano con la superficie
+      mats.push(cm);
+    }
     if (p.atmo) {
       const k = p.id === 'titano' ? 1.08 : p.id === 'terra' ? 1.025 : 1.02;
       const am = U.atmoMaterial(p.atmo[0], p.atmo[1]);

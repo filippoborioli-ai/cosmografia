@@ -69,6 +69,58 @@
         info: { name: 'Verso il centro galattico', type: 'Direzione (l = 0°)', cert: 'mis', facts: [['Distanza del centro', '~26.670 anni luce']],
           desc: 'Il piano di riferimento di questa scena è il piano galattico; le linee verticali collegano ogni stella al piano per leggere la profondità. Il centro della Via Lattea si trova in questa direzione, nel Sagittario.' } });
       const oort = U.makeWireSphere(1.58, '#6f8fc8', 0.12); oort.userData.isOrbit = true; S.add(oort);
+
+      // Catalogo HYG: stelle reali entro 100 pc, con magnitudine apparente calcolata dalla camera
+      const hyg = U.nearStars();
+      if (hyg) {
+        const curated = U.NEAR.map((s) => U.eqVec(U.ra(s.ra), U.dec(s.dec), s.d));
+        const cell = (v) => Math.round(v.x / 2) + ',' + Math.round(v.y / 2) + ',' + Math.round(v.z / 2);
+        const grid = new Map();
+        for (const v of curated) { const k = cell(v); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(v); }
+        const pos = [], mags = [], cols = [];
+        const tmp = new THREE.Vector3();
+        let added = 0;
+        for (let k = 0; k < hyg.n; k++) {
+          tmp.set(hyg.pos[k * 3], hyg.pos[k * 3 + 1], hyg.pos[k * 3 + 2]);
+          // salta le stelle già presenti nel catalogo curato (entro 0,35 anni luce)
+          let dup = false;
+          const near = grid.get(cell(tmp));
+          if (near) for (const v of near) if (v.distanceTo(tmp) < 0.35) { dup = true; break; }
+          if (dup) continue;
+          const bv = U.clamp(hyg.bv[k], -0.4, 2.0);
+          const c = U.bbColor(U.bvToTemp(bv));
+          pos.push(tmp.x, tmp.y, tmp.z); mags.push(hyg.absMag[k]); cols.push(c.r, c.g, c.b);
+          const raw = hyg.names[k] || '';
+          const proper = raw.startsWith('*');
+          const name = (proper ? raw.slice(1) : raw) || 'Stella senza nome';
+          const dist = tmp.length();
+          const idx = k;
+          const it = inst.add({ id: 'hyg' + k, name, cert: 'mis', pos: tmp.clone(), radius: 0, label: 0, viewDist: 0.6, pickPenalty: 2 });
+          Object.defineProperty(it, 'info', {
+            configurable: true,
+            get() {
+              const M = hyg.absMag[idx], T = U.bvToTemp(U.clamp(hyg.bv[idx], -0.4, 2.0));
+              const m = M + 5 * Math.log10(dist * C.ly / C.pc / 10);
+              const L = Math.pow(10, -0.4 * (M - 4.83));
+              return { name, type: 'Stella (catalogo HYG)', cert: 'mis',
+                facts: [['Distanza', U.sig(dist, 3) + ' anni luce'], ['Magnitudine apparente dalla Terra', U.nf(m, 2)], ['Magnitudine assoluta', U.nf(M, 2)],
+                  ['Luminosità visuale', '~' + U.sci(L, 2) + ' Soli'], ['Indice di colore B−V', U.nf(hyg.bv[idx], 2)], ['Temperatura stimata', '~' + U.nf(Math.round(T / 50) * 50, 0) + ' K']],
+                desc: 'Stella del catalogo HYG (Hipparcos, Yale Bright Star, Gliese), posizione reale. Nel vicinato la sua luminosità è calcolata dalla posizione della camera: avvicinandoti la vedi diventare più brillante, come accadrebbe davvero.',
+                src: ['hyg'] };
+            },
+          });
+          if (proper) { it.label = 3; it.labelMaxDist = 120; }
+          added++;
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('absMag', new THREE.Float32BufferAttribute(mags, 1));
+        g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+        const cloud = new THREE.Points(g, U.star3dMaterial(C.ly / C.pc, 15.5));
+        cloud.frustumCulled = false;
+        S.add(cloud);
+        inst.hygCount = added;
+      }
     },
   });
 
@@ -82,7 +134,7 @@
     for (const pl of sys.planets) inner = Math.min(inner, planetA(pl, sys));
     return {
       name: sys.name, unit: { name: 'UA', m: C.AU },
-      minDist: 1e-5, maxDist, startDist: Math.max(inner * 6, 0.3), startView: [0.8, 1.15], focus: sys.primary, sky: 'galactic_far', extent: maxDist * 10, nearFade: 0,
+      minDist: 1e-5, maxDist, startDist: Math.max(inner * 6, 0.3), startView: [0.8, 1.15], focus: sys.primary, sky: 'galactic', extent: maxDist * 10, nearFade: 0,
       timeControls: true,
       parent: () => ({ level: 'neighborhood', focus: sys.primary }),
       build(inst) {

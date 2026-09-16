@@ -190,6 +190,8 @@ void main(){
     albedo=mix(uC1,uC2,smoothstep(-0.3,0.4,f)); albedo=mix(albedo,uC3,cr.x*0.8);
   } else if(uType==9){ // Titano: foschia arancione
     float f=fbm(sp*2.0)*0.5+0.5; albedo=mix(uC1,uC2,f*0.25);
+  } else if(uType==11){ // mappa reale (NASA / Solar System Scope)
+    albedo=texture2D(uDay,vUv).rgb*uC1;
   } else if(uType==10){ // Plutone: pianure di azoto (Sputnik Planitia indicativa)
     float f=fbm(sp*2.5);
     albedo=mix(uC1,uC2,smoothstep(-0.2,0.4,f));
@@ -201,6 +203,39 @@ void main(){
   float dark=1.0-smoothstep(-0.15,0.08,ndl);
   vec3 col=albedo*(uAmbient+diff*1.05)+emissive*dark+vec3(spec)*step(0.0,ndl);
   gl_FragColor=vec4(col,1.0);
+}`;
+
+  // --- Nubi terrestri (mappa in scala di grigi come trasparenza) -------------
+  S.cloudFrag = /* glsl */`
+uniform sampler2D uMap; uniform vec3 uSunDir; uniform float uOpacity;
+varying vec3 vN; varying vec3 vNW; varying vec3 vPosW; varying vec2 vUv;
+#include <logdepthbuf_pars_fragment>
+void main(){
+  #include <logdepthbuf_fragment>
+  float a=texture2D(uMap,vUv).r;
+  a=smoothstep(0.08,0.9,a)*uOpacity;
+  float ndl=dot(normalize(vNW),normalize(uSunDir));
+  float lit=smoothstep(-0.08,0.3,ndl);
+  gl_FragColor=vec4(vec3(1.0)*(0.03+0.97*lit),a*(0.25+0.75*lit));
+}`;
+
+  // --- Stelle 3D con magnitudine apparente calcolata dal punto di vista -------
+  S.star3dVert = /* glsl */`
+attribute float absMag; attribute vec3 color;
+uniform float uPixelRatio; uniform float uLim; uniform float uUnitPc;
+varying vec3 vColor; varying float vA;
+#include <common>
+#include <logdepthbuf_pars_vertex>
+void main(){
+  vec4 mv=modelViewMatrix*vec4(position,1.0);
+  float dpc=max(length(mv.xyz)*uUnitPc,1e-6);
+  float m=absMag+5.0*log(dpc/10.0)/log(10.0);
+  float v=clamp((uLim-m)/(uLim+1.5),0.0,1.0);
+  gl_PointSize=(1.3+8.0*v*v*v)*uPixelRatio;
+  vA=v<=0.0?0.0:0.16+0.84*pow(v,1.2);
+  vColor=color;
+  gl_Position=projectionMatrix*mv;
+  #include <logdepthbuf_vertex>
 }`;
 
   // --- Atmosfera (guscio additivo) --------------------------------------------

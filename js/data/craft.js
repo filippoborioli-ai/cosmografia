@@ -1,0 +1,62 @@
+// =============================================================================
+//  craft.js — schede di sonde e oggetti interstellari. Le traiettorie vengono da
+//  JPL Horizons (U.GEN.horizons, stesse chiavi) e sono interpolate alla data simulata.
+// =============================================================================
+window.U = window.U || {};
+(function (U) {
+  'use strict';
+  const K = (name, type, color, facts, desc, extra) => Object.assign({ name, type, color, facts, desc, cert: 'mis', src: ['horizons'] }, extra || {});
+  U.CRAFT = {
+    voyager1: K('Voyager 1', 'Sonda interstellare (NASA)', '#ffd27a',
+      [['Lancio', '5 settembre 1977'], ['Sorvoli', 'Giove (1979), Saturno e Titano (1980)'], ['Eliopausa', '25 agosto 2012, a 121,6 UA'], ['Velocità', '~17 km/s']],
+      'L\'oggetto costruito dall\'uomo più lontano. Nel 1990 scattò il "Pale Blue Dot", la Terra vista da 6 miliardi di km. Dal 2012 viaggia nello spazio interstellare e misura direttamente il plasma della galassia. Porta il Golden Record.',
+      { src: ['horizons', 'voyager_jpl', 'stone2013'] }),
+    voyager2: K('Voyager 2', 'Sonda interstellare (NASA)', '#ffd27a',
+      [['Lancio', '20 agosto 1977'], ['Sorvoli', 'Giove, Saturno, Urano (1986), Nettuno (1989)'], ['Eliopausa', '5 novembre 2018, a ~119 UA']],
+      'L\'unica sonda ad aver visitato Urano e Nettuno: quasi tutto ciò che sappiamo da vicino dei due giganti ghiacciati viene da questi due sorvoli.', { src: ['horizons', 'voyager_jpl'] }),
+    pioneer10: K('Pioneer 10', 'Sonda (NASA), silenziosa', '#d8c08a',
+      [['Lancio', '3 marzo 1972'], ['Primato', 'primo sorvolo di Giove (dicembre 1973)'], ['Ultimo segnale', 'gennaio 2003']],
+      'La prima sonda ad attraversare la fascia degli asteroidi e a visitare Giove. Porta la placca Pioneer. La posizione attuale è calcolata: la sonda non trasmette più.', { cert: 'mod' }),
+    pioneer11: K('Pioneer 11', 'Sonda (NASA), silenziosa', '#d8c08a',
+      [['Lancio', '6 aprile 1973'], ['Primato', 'primo sorvolo di Saturno (settembre 1979)'], ['Ultimo contatto', 'settembre 1995']],
+      'Dopo Giove usò la sua gravità per raggiungere Saturno, aprendo la strada alle Voyager. Posizione attuale calcolata.', { cert: 'mod' }),
+    newhorizons: K('New Horizons', 'Sonda (NASA)', '#ffd27a',
+      [['Lancio', '19 gennaio 2006'], ['Plutone', 'sorvolo il 14 luglio 2015'], ['Arrokoth', 'sorvolo il 1 gennaio 2019']],
+      'Ha rivelato Plutone come mondo geologicamente attivo e poi ha sorvolato Arrokoth, il corpo più lontano e primitivo mai visitato. Oggi attraversa la fascia di Kuiper.'),
+    parker: K('Parker Solar Probe', 'Sonda solare (NASA)', '#ff9d5c',
+      [['Lancio', '12 agosto 2018'], ['Perielio record', '24 dicembre 2024, ~6,1 milioni di km dalla superficie'], ['Velocità massima', '~192 km/s: l\'oggetto umano più veloce']],
+      'La sonda che "tocca" il Sole: attraversa la corona per capire come si scalda a milioni di gradi e come nasce il vento solare. Le orbite strette attorno al Sole sono ben visibili zoomando all\'interno dell\'orbita di Mercurio.'),
+    solo: K('Solar Orbiter', 'Sonda solare (ESA/NASA)', '#ffb77a',
+      [['Lancio', '10 febbraio 2020'], ['Primato', 'prime immagini dei poli del Sole (2025)']],
+      'Usa sorvoli di Venere per inclinare progressivamente l\'orbita e osservare le regioni polari del Sole, chiave per capirne il ciclo magnetico.'),
+    bepicolombo: K('BepiColombo', 'Sonda per Mercurio (ESA/JAXA)', '#9fd8ff',
+      [['Lancio', '20 ottobre 2018'], ['Arrivo in orbita', 'fine 2026 (pianificato)'], ['Composizione', 'due orbiter: MPO (ESA) e Mio (JAXA)']],
+      'Missione europea e giapponese verso Mercurio, dopo nove sorvoli planetari. L\'effemeride disponibile si ferma all\'inserimento in orbita; oltre quella data la posizione è solo estrapolata.', { cert: 'mod' }),
+    juice: K('JUICE', 'Sonda per Giove (ESA)', '#9fd8ff',
+      [['Lancio', '14 aprile 2023'], ['Sorvoli', 'Luna–Terra (2024), Venere (2025), Terra (2026, 2029)'], ['Arrivo a Giove', 'luglio 2031'], ['Obiettivo', 'Ganimede, Europa, Callisto']],
+      'Studierà le lune ghiacciate di Giove come possibili ambienti abitabili ed entrerà in orbita attorno a Ganimede: la prima sonda in orbita attorno a una luna diversa dalla nostra.'),
+    clipper: K('Europa Clipper', 'Sonda per Giove (NASA)', '#9fd8ff',
+      [['Lancio', '14 ottobre 2024'], ['Sorvoli', 'Marte (marzo 2025), Terra (dicembre 2026)'], ['Arrivo a Giove', 'aprile 2030']],
+      'Farà decine di sorvoli ravvicinati di Europa per misurare lo spessore del ghiaccio e la composizione dell\'oceano sottostante.'),
+    lucy: K('Lucy', 'Sonda per i Troiani (NASA)', '#9fd8ff',
+      [['Lancio', '16 ottobre 2021'], ['Sorvoli', 'Dinkinesh (2023), Donaldjohanson (2025)'], ['Troiani', 'Eurybates e altri dal 2027']],
+      'La prima missione verso gli asteroidi Troiani di Giove, "fossili" della formazione dei pianeti. Su Dinkinesh ha scoperto una luna binaria a contatto, Selam.'),
+    psyche: K('Psyche', 'Sonda (NASA)', '#9fd8ff',
+      [['Lancio', '13 ottobre 2023'], ['Obiettivo', 'asteroide (16) Psiche, arrivo previsto nel 2029'], ['Propulsione', 'elettrica a effetto Hall']],
+      'Diretta verso un asteroide ricco di metalli, forse il nucleo esposto di un protopianeta.'),
+    hera: K('Hera', 'Sonda di difesa planetaria (ESA)', '#9fd8ff',
+      [['Lancio', '7 ottobre 2024'], ['Obiettivo', 'sistema Didymos–Dimorphos'], ['Arrivo', 'fine 2026 (pianificato)']],
+      'Studierà gli effetti dell\'impatto della sonda DART (NASA, 2022), che ha accorciato l\'orbita di Dimorphos: il primo test di deviazione di un asteroide.', { cert: 'mod' }),
+    oumuamua: K('1I/ʻOumuamua', 'Primo oggetto interstellare', '#e0a0ff',
+      [['Scoperta', '19 ottobre 2017, Pan-STARRS (Hawaii)'], ['Orbita', 'iperbolica (e ≈ 1,2)'], ['Forma', 'molto allungata o appiattita (dedotta dalla curva di luce)']],
+      'Il primo corpo osservato provenire da un altro sistema stellare. Ha mostrato una piccola accelerazione non gravitazionale senza una chioma visibile, spiegata in seguito con il rilascio di idrogeno intrappolato nel ghiaccio.',
+      { frontier: 'La natura esatta (frammento ghiacciato di azoto, oggetto ricco di idrogeno, residuo di un planetesimo) è ancora discussa.' }),
+    borisov: K('2I/Borisov', 'Prima cometa interstellare', '#e0a0ff',
+      [['Scoperta', '30 agosto 2019, Gennadij Borisov (Crimea)'], ['Orbita', 'iperbolica (e ≈ 3,4)']],
+      'La prima cometa interstellare: molto simile alle comete del Sistema solare ma insolitamente ricca di monossido di carbonio, segno di una formazione in un ambiente più freddo.'),
+    atlas3i: K('3I/ATLAS', 'Terzo oggetto interstellare', '#e0a0ff',
+      [['Scoperta', '1 luglio 2025, rete ATLAS (Cile)'], ['Perielio', 'fine ottobre 2025, ~1,4 UA dal Sole'], ['Velocità in ingresso', '~58 km/s']],
+      'Una cometa interstellare molto veloce, forse più antica del Sistema solare e proveniente da una popolazione di stelle vecchie. Mostra una chioma attiva osservata da numerosi telescopi e sonde.',
+      { frontier: 'Età e regione di origine nella Galassia sono stime statistiche basate sulla velocità.' }),
+  };
+})(window.U);

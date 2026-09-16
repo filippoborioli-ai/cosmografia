@@ -92,5 +92,9 @@ U.SRC = {
   sagdsph: { t: 'Ibata, Gilmore & Irwin (1994), A dwarf satellite galaxy in Sagittarius, Nature 370, 194' },
   local_bubble: { t: 'Zucker et al. (2022) — vedi sopra; Pelgrims et al. (2020), Modeling the magnetized Local Bubble from dust data, A&A 636, A17' },
   m31_distance: { t: 'Li, Riess et al. (2021), A Sub-2% Distance to M31 from Photometrically Measured Cepheids, ApJ 920, 84', u: 'https://arxiv.org/abs/2107.08029' },
+  hyg: { t: 'Nash, D. — HYG Stellar Database v4.1 (Hipparcos, Yale Bright Star, Gliese), CC BY-SA 4.0', u: 'https://github.com/astronexus/HYG-Database' },
+  sbdb: { t: 'NASA/JPL Solar System Dynamics — Small-Body Database (SBDB) e SBDB Query API', u: 'https://ssd-api.jpl.nasa.gov/doc/sbdb_query.html' },
+  horizons: { t: 'NASA/JPL Horizons System — effemeridi di sonde, comete e oggetti interstellari', u: 'https://ssd.jpl.nasa.gov/horizons/' },
+  sss_tex: { t: 'Solar System Scope — Planet Textures (basate su dati NASA), CC BY 4.0', u: 'https://www.solarsystemscope.com/textures/' },
   bennett2019: { t: 'Bennett & Bovy (2019), Vertical waves in the solar neighbourhood in Gaia DR2, MNRAS 482, 1417', u: 'https://arxiv.org/abs/1809.03507' },
 };

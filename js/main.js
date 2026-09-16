@@ -27,5 +27,6 @@
 
     window.addEventListener('error', (e) => U.UI.toast('Errore: ' + e.message, 6000));
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+  // gli script sono in fondo al body: il DOM esiste già. Si parte subito, le texture arrivano dopo.
+  start();
 })(window.U);

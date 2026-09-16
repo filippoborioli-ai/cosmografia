@@ -296,7 +296,9 @@ window.U = window.U || {};
       const v = U.galVec(l, b, 1000);
       pos.push(v.x, v.y, v.z); colr.push(c.r, c.g, c.b); size.push(sz);
     };
-    const nStars = U.q(9000);
+    const real = U.skyStars ? U.skyStars() : null;
+    // con il catalogo HYG: stelle reali fino a mag 6,5 + un fondo tenue di stelle più deboli simulate
+    const nStars = U.q(real ? 3500 : 9000);
     for (let k = 0; k < nStars; k++) {
       let l, b;
       if (r() < 0.45) { const v = r.unitVec(); l = Math.atan2(v[1], v[0]) / D; b = Math.asin(v[2]) / D; }
@@ -307,8 +309,16 @@ window.U = window.U || {};
         b = r.laplace(5 + 4 * r());
       }
       const mag = Math.pow(r(), 3.5);
-      const c = U.bbColor(3200 + Math.pow(r(), 1.5) * 12000).multiplyScalar(0.35 + mag * 0.9);
-      push(l, b, 0.9 + mag * 2.4, c);
+      const c = U.bbColor(3200 + Math.pow(r(), 1.5) * 12000).multiplyScalar(real ? 0.12 + mag * 0.2 : 0.35 + mag * 0.9);
+      push(l, b, real ? 0.9 + mag * 0.6 : 0.9 + mag * 2.4, c);
+    }
+    if (real) {
+      for (const s of real) {
+        if (opts.skipNear && s.near) continue;
+        const g = U.eqToGal(s.ra, s.dec);
+        const c = U.bbColor(U.bvToTemp(U.clamp(s.bv, -0.4, 2.0))).multiplyScalar(U.clamp(1.45 - s.mag * 0.16, 0.28, 1.6));
+        push(g.l, g.b, U.clamp(5.2 - s.mag * 0.62, 1.1, 7), c);
+      }
     }
     // bagliore diffuso della Via Lattea con fenditure di polvere
     const nGlow = U.q(26000);
@@ -323,7 +333,7 @@ window.U = window.U || {};
       push(l, b, 1.6 + r() * 2.2, c);
     }
     // stelle brillanti reali
-    for (const s of U.BRIGHT || []) {
+    for (const s of real ? [] : (U.BRIGHT || [])) {
       if (opts.skipNear && s.near) continue;
       const g = U.eqToGal(U.ra(s.ra), U.dec(s.dec));
       const c = U.bbColor(U.spectralTemp(s.sp)).multiplyScalar(U.clamp(1.25 - s.mag * 0.18, 0.55, 1.3));
@@ -362,34 +372,67 @@ window.U = window.U || {};
   };
 
   // --- Pianeti ----------------------------------------------------------------
-  let _texCache = null;
-  U.planetTextures = function () {
-    if (_texCache) return _texCache;
-    const load = (src) => {
-      const t = new THREE.TextureLoader().load(src);
-      t.anisotropy = 8;
-      return t;
-    };
-    const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
-    blank.needsUpdate = true;
-    _texCache = {
-      day: U.TEX && U.TEX.earthDay ? load(U.TEX.earthDay) : blank,
-      night: U.TEX && U.TEX.earthNight ? load(U.TEX.earthNight) : blank,
-      blank,
-    };
-    return _texCache;
+  const _tex = {};
+  const _blank = (() => { const t = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); t.needsUpdate = true; return t; })();
+  // Texture incorporate come data URI (U.TEX[key]); caricate una sola volta
+  U.texture = function (key) {
+    if (!key || !U.TEX || !U.TEX[key]) return null;
+    if (_tex[key]) return _tex[key];
+    const t = new THREE.TextureLoader().load(U.TEX[key]);
+    t.anisotropy = 8;
+    return (_tex[key] = t);
   };
   U.planetMaterial = function (look) {
-    const tex = U.planetTextures();
     const c = (x) => new THREE.Color(x || '#888888');
-    return new THREE.ShaderMaterial({
+    let type = look.type || 0;
+    let day = null;
+    if (look.tex) { day = U.texture(look.tex); if (day) type = 11; }
+    if (type === 2) day = U.texture('earthDay');
+    if ((type === 2 || type === 11) && !day) type = look.fallbackType || 0; // dati mancanti: aspetto procedurale
+    const mat = new THREE.ShaderMaterial({
       uniforms: {
-        uType: { value: look.type || 0 }, uC1: { value: c(look.c1) }, uC2: { value: c(look.c2) }, uC3: { value: c(look.c3) },
+        uType: { value: type }, uC1: { value: c(type === 11 ? (look.tint || '#ffffff') : look.c1) }, uC2: { value: c(look.c2) }, uC3: { value: c(look.c3) },
         uSeed: { value: look.seed || 0 }, uSunDir: { value: new THREE.Vector3(1, 0, 0) }, uTime: U.G.uTime,
         uAmbient: { value: look.ambient != null ? look.ambient : 0.035 },
-        uDay: { value: look.type === 2 ? tex.day : tex.blank }, uNight: { value: look.type === 2 ? tex.night : tex.blank }, uHasTex: { value: look.type === 2 ? 1 : 0 },
+        uDay: { value: day || _blank }, uNight: { value: type === 2 ? (U.texture('earthNight') || _blank) : _blank }, uHasTex: { value: day ? 1 : 0 },
       },
       vertexShader: U.SH.planetVert, fragmentShader: U.SH.planetFrag,
+    });
+    mat.userData.look = look;
+    return mat;
+  };
+  U.cloudMaterial = function () {
+    const map = U.texture('earthClouds');
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uMap: { value: map || _blank }, uSunDir: { value: new THREE.Vector3(1, 0, 0) }, uOpacity: { value: map ? 0.85 : 0 } },
+      vertexShader: U.SH.planetVert, fragmentShader: U.SH.cloudFrag, transparent: true, depthWrite: false,
+    });
+    m.userData.clouds = true;
+    return m;
+  };
+  // Le texture (≈4,5 MB) arrivano dopo l'avvio: aggiorna i materiali già creati
+  U.onTextures = function () {
+    const E = U.Engine;
+    if (!E || !E.instances) return;
+    for (const id in E.instances) {
+      E.instances[id].scene.traverse((o) => {
+        const m = o.material;
+        if (!m || !m.userData) return;
+        if (m.userData.clouds) {
+          const map = U.texture('earthClouds');
+          if (map) { m.uniforms.uMap.value = map; m.uniforms.uOpacity.value = 0.85; }
+        } else if (m.userData.look) {
+          const fresh = U.planetMaterial(m.userData.look);
+          for (const k of ['uType', 'uDay', 'uNight', 'uHasTex', 'uC1']) m.uniforms[k].value = fresh.uniforms[k].value;
+          fresh.dispose();
+        }
+      });
+    }
+  };
+  U.star3dMaterial = function (unitPc, lim) {
+    return new THREE.ShaderMaterial({
+      uniforms: { uPixelRatio: U.G.uPixelRatio, uLim: { value: lim || 16 }, uUnitPc: { value: unitPc }, uCore: { value: 3.2 } },
+      vertexShader: U.SH.star3dVert, fragmentShader: U.SH.pointsFrag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
   };
   U.atmoMaterial = function (color, strength) {

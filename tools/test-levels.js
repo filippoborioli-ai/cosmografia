@@ -3,11 +3,15 @@
 const root = require("path").resolve(__dirname, "..");
 global.window = global; global.THREE = require(root + '/vendor/three.min.js');
 global.location = { search: '' }; global.navigator = { userAgent: 'node' };
-const files = ['js/core/util.js','js/core/shaders.js','js/core/factory.js','js/core/engine.js','js/data/sources.js','js/data/solar.js','js/data/stars.js','js/data/galactic.js','js/data/cosmic.js','js/levels/bodies.js','js/levels/solar.js','js/levels/stellar.js','js/levels/galactic.js','js/levels/cosmic.js'];
+// stesso ordine di caricamento di index.html (senza three.js e texture, che richiedono il DOM)
+const html = require('fs').readFileSync(root + '/index.html', 'utf8');
+const files = [...html.matchAll(/<script src="(js\/[^"]+)"><\/script>/g)].map((m) => m[1]).filter((f) => !/textures\.js|ui\.js|main\.js/.test(f));
+global.U = { TEX: {} };
 for (const f of files) require(root + '/' + f);
 const U = global.U, E = U.Engine;
 const blank = new THREE.DataTexture(new Uint8Array([0,0,0,255]),1,1);
-U.planetTextures = () => ({ day: blank, night: blank, blank });
+U.TEX = { earthDay: 'x', earthNight: 'x', earthClouds: 'x', moon: 'x', mars: 'x' };
+U.texture = () => blank;
 E.time = { jd: U.dateToJD(new Date()), speed: 0, paused: false };
 E.opts = { labels: true, orbits: true, constellations: true, exaggerate: false };
 E.skySun = new THREE.Object3D();
@@ -24,6 +28,7 @@ for (const id of ids) {
     if (def.update) def.update(inst, { dt: 0.016, jd: E.time.jd, E });
     if (!inst.byId[def.focus]) errors.push(id + ': focus mancante ' + def.focus);
     for (const it of inst.items) {
+      if (it.id.startsWith('hyg') && Number(it.id.slice(3)) % 500 !== 0) continue; // schede HYG generate al volo: ne campiona alcune
       if (!it.name) errors.push(id + ': item senza nome ' + it.id);
       if (!isFinite(it.pos.x) || !isFinite(it.pos.y) || !isFinite(it.pos.z)) errors.push(id + ': pos NaN ' + it.id);
       if (it.portal) { const cd = U.getLevelDef(it.portal.level); if (!cd) errors.push(id + ': portale verso livello inesistente ' + it.portal.level); else {

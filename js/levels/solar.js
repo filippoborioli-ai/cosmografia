@@ -1,70 +1,71 @@
 // =============================================================================
 //  Livello: Sistema solare (unità: UA, frame eclittico J2000)
+//  + famiglia "planet:<id>" (unità: km) con lune da elementi medi JPL.
 // =============================================================================
 (function (U) {
   'use strict';
   const C = U.C, D = C.DEG;
   let eclQuat = null;
 
+  function planetData(key) {
+    return U.SOLAR.planets.find((x) => x.id === key) || (key === 'plutone' ? U.SOLAR.pluto : null);
+  }
   function planetLevelMax(key) {
-    const p = U.SOLAR.planets.find((x) => x.id === key) || (key === 'plutone' ? U.SOLAR.pluto : null);
+    const p = planetData(key);
     const moons = U.SOLAR.moons[key] || [];
     let maxA = 0;
-    for (const m of moons) maxA = Math.max(maxA, m.a);
+    for (const m of moons) if (!m.far) maxA = Math.max(maxA, m.a);
     return Math.max(p.R_km * 80, maxA * 3.2);
   }
   U.planetLevelMax = planetLevelMax;
 
-  // anomalia media all'epoca da tempo di perielio (anno decimale o JD) oppure da calibrazione in longitudine
-  function smallBodyElements(sb) {
-    const el = Object.assign({ epoch: C.J2000 }, sb.el);
-    const n = U.meanMotion(el.a);
-    if (sb.tpJD) el.M0 = n * (C.J2000 - sb.tpJD);
-    else if (sb.tp != null) el.M0 = n * (C.J2000 - (C.J2000 + (sb.tp - 2000.0) * 365.25));
-    else if (sb.calib) {
-      const jd = U.dateToJD(new Date(sb.calib.date + 'T00:00:00Z'));
-      let best = 0, bestErr = 1e9;
-      for (let M = 0; M < 360; M += 0.25) {
-        const e2 = Object.assign({}, el, { M0: M, epoch: jd });
-        const p = U.keplerAt(e2, jd);
-        const lon = (Math.atan2(p[1], p[0]) / D + 360) % 360;
-        const err = Math.abs(((lon - sb.calib.lon + 540) % 360) - 180);
-        if (err < bestErr) { bestErr = err; best = M; }
-      }
-      el.M0 = best - n * (jd - C.J2000);
-    } else el.M0 = 0;
-    el.n = n;
+  // Elementi di un corpo con nome: JPL SBDB (U.GEN.named) riportati all'epoca J2000
+  function namedElements(id) {
+    const g = U.GEN && U.GEN.named && U.GEN.named[id];
+    if (!g) return null;
+    const n = U.meanMotion(g.a);
+    const el = { a: g.a, e: g.e, i: g.i, node: g.node, peri: g.peri, epoch: C.J2000, n };
+    if (g.M != null) el.M0 = g.M - n * (g.epoch - C.J2000);
+    else if (g.tp != null) el.M0 = n * (C.J2000 - g.tp);
+    else el.M0 = 0;
     return el;
   }
 
   // Popolazione kepleriana animata nel vertex shader
-  function makeBelt(gen, n, opts) {
-    const r = U.rng(opts.seed || 5);
-    const aOrb = [], aAng = [], size = [], color = [];
-    for (let k = 0; k < n; k++) {
-      const o = gen(r);
-      if (!o) { k--; continue; }
-      aOrb.push(o.a, o.e, o.i * D);
-      aAng.push(o.node * D, o.peri * D, o.M * D);
-      size.push(opts.size * (0.5 + r()));
-      const b = 0.5 + 0.5 * r();
-      color.push(opts.color[0] * b, opts.color[1] * b, opts.color[2] * b);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(n * 3), 3));
-    g.setAttribute('aOrb', new THREE.Float32BufferAttribute(aOrb, 3));
-    g.setAttribute('aAng', new THREE.Float32BufferAttribute(aAng, 3));
-    g.setAttribute('size', new THREE.Float32BufferAttribute(size, 1));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(color, 3));
-    const m = new THREE.ShaderMaterial({
-      uniforms: { uDays: { value: 0 }, uScale: U.G.uScale, uMinPx: { value: opts.minPx || 1 }, uMaxPx: { value: 3 }, uIntensity: { value: opts.intensity || 0.5 }, uAnimate: { value: 1 }, uCore: { value: 3 } },
+  function makeBeltGeometry(n, fill) {
+    const aOrb = new Float32Array(n * 3), aAng = new Float32Array(n * 3), size = new Float32Array(n), color = new Float32Array(n * 3);
+    let k = 0;
+    fill((a, e, i, node, peri, M, s, r, g, b) => {
+      aOrb[k * 3] = a; aOrb[k * 3 + 1] = e; aOrb[k * 3 + 2] = i * D;
+      aAng[k * 3] = node * D; aAng[k * 3 + 1] = peri * D; aAng[k * 3 + 2] = M * D;
+      size[k] = s; color[k * 3] = r; color[k * 3 + 1] = g; color[k * 3 + 2] = b;
+      k++;
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(k * 3), 3));
+    geo.setAttribute('aOrb', new THREE.BufferAttribute(aOrb.subarray(0, k * 3), 3));
+    geo.setAttribute('aAng', new THREE.BufferAttribute(aAng.subarray(0, k * 3), 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(size.subarray(0, k), 1));
+    geo.setAttribute('color', new THREE.BufferAttribute(color.subarray(0, k * 3), 3));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uDays: { value: 0 }, uScale: U.G.uScale, uMinPx: { value: 1.3 }, uMaxPx: { value: 3.2 }, uIntensity: { value: 0.85 }, uAnimate: { value: 1 }, uCore: { value: 3 } },
       vertexShader: U.SH.beltVert, fragmentShader: U.SH.pointsFrag, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    const pts = new THREE.Points(g, m);
+    const pts = new THREE.Points(geo, mat);
     pts.frustumCulled = false;
     return pts;
   }
-  const rayleigh = (r, s) => s * Math.sqrt(-2 * Math.log(1 - r() * 0.999));
+
+  // Classi SBDB: colore, albedo tipica, dimensione di riferimento
+  const CLS = {
+    MBA: { c: [0.68, 0.62, 0.55], p: 0.14, s: 0.012, D0: 6 },
+    IMB: { c: [0.8, 0.74, 0.66], p: 0.3, s: 0.012, D0: 4 },
+    OMB: { c: [0.62, 0.56, 0.52], p: 0.06, s: 0.014, D0: 15 },
+    TJN: { c: [0.74, 0.54, 0.42], p: 0.07, s: 0.03, D0: 15 },
+    TNO: { c: [0.56, 0.68, 0.88], p: 0.1, s: 0.32, D0: 150 },
+    CEN: { c: [0.55, 0.85, 0.62], p: 0.08, s: 0.08, D0: 30 },
+    NEO: { c: [1.0, 0.45, 0.35], p: 0.2, s: 0.006, D0: 1 },
+  };
 
   U.defineLevel({
     id: 'solar', name: 'Sistema solare', unit: { name: 'UA', m: C.AU },
@@ -87,6 +88,7 @@
       const all = U.SOLAR.planets.concat([U.SOLAR.pluto]);
       const jd = E.time.jd;
       for (const p of all) {
+        if (p.look && (p.look.tex || p.look.clouds) && p.src && !p.src.includes('sss_tex')) p.src.push('sss_tex');
         const body = U.makePlanetBody(p, 64);
         body.group.scale.setScalar(kmToAU);
         S.add(body.group);
@@ -96,82 +98,82 @@
         S.add(orbit);
         const R = p.R_km * kmToAU;
         const it = inst.marker({ id: p.id, info: p, color: p.color, px: p.id === 'plutone' ? 5 : 7, halo: 0.5, label: p.id === 'plutone' ? 2 : 1, radius: R,
-          viewDist: R * 7, labelMaxDist: p.id === 'plutone' ? 2500 : 1500, pos: new THREE.Vector3(), portal: { level: 'planet:' + p.id, focus: p.id, enterDist: planetLevelMax(p.id) * 0.35 * kmToAU } });
+          viewDist: R * 7, labelMaxDist: p.id === 'plutone' ? 2500 : 1500, pos: new THREE.Vector3(),
+          portal: { level: 'planet:' + p.id, focus: p.id, enterDist: planetLevelMax(p.id) * 0.35 * kmToAU } });
         it.body = body; it.data = p;
         it.dynamicFacts = () => {
           const dAU = it.pos.length();
-          return [['Distanza attuale dal Sole', U.sig(dAU, 4) + ' UA'], ['Luce dal Sole', U.fmtLightTime(dAU * C.AU)]];
+          const earth = inst.byId.terra;
+          const out = [['Distanza attuale dal Sole', U.sig(dAU, 4) + ' UA'], ['Luce dal Sole', U.fmtLightTime(dAU * C.AU)]];
+          if (earth && it !== earth) out.push(['Distanza attuale dalla Terra', U.sig(it.pos.distanceTo(earth.pos), 4) + ' UA']);
+          return out;
         };
         inst.bodies.push(it);
       }
 
-      // Piccoli corpi
+      // Corpi minori con nome (elementi reali JPL SBDB)
       inst.smalls = [];
       for (const sb of U.SOLAR.small) {
-        const el = smallBodyElements(sb);
-        const line = U.makeLine(U.orbitPath(el, sb.el.e > 0.9 ? 2048 : 512), sb.color, 0.16, true);
+        const el = namedElements(sb.id);
+        if (!el) continue;
+        const line = U.makeLine(U.orbitPath(el, el.e > 0.9 ? 2048 : 512), sb.color, 0.16, true);
         line.userData.isOrbit = true;
         S.add(line);
-        const it = inst.marker({ id: sb.id, info: sb, color: sb.color, px: 4.5, halo: 0.4, label: 2, radius: 0, viewDist: sb.el.a * 0.15, pos: new THREE.Vector3() });
+        const it = inst.marker({ id: sb.id, info: sb, color: sb.color, px: sb.label === 1 ? 5 : 4.2, halo: 0.4, label: sb.label || 2, radius: 0,
+          viewDist: Math.max(0.05, el.a * (1 - el.e) * 0.2), labelMaxDist: el.a > 30 ? 3000 : 60, pos: new THREE.Vector3() });
         it.el = el;
-        it.dynamicFacts = () => [['Distanza attuale dal Sole', U.sig(it.pos.length(), 3) + ' UA']];
+        it.dynamicFacts = () => {
+          const g = U.GEN.named[sb.id];
+          const out = [['Distanza attuale dal Sole', U.sig(it.pos.length(), 3) + ' UA'], ['Semiasse maggiore', U.sig(g.a, 4) + ' UA'], ['Eccentricità', U.sig(g.e, 3)], ['Periodo orbitale', U.sig(Math.pow(g.a, 1.5), 3) + ' anni']];
+          if (g.diameter) out.push(['Diametro (SBDB)', U.sig(g.diameter, 3) + ' km']);
+          return out;
+        };
         inst.smalls.push(it);
       }
 
-      // Sonde
+      // Sonde e oggetti interstellari (JPL Horizons)
       inst.craft = [];
-      for (const cr of U.SOLAR.craft) {
-        const dirEq = U.eqUnit(U.ra(cr.ra), U.dec(cr.dec));
-        const dir = U.toThree(U.eqToEcl(dirEq)).normalize();
-        const it = inst.marker({ id: cr.id, info: cr, color: cr.color, px: 5, halo: 0.3, label: 2, radius: 0, pos: new THREE.Vector3() });
-        it.dir = dir; it.cr = cr;
-        const line = U.makeLineV([new THREE.Vector3(), dir.clone().multiplyScalar(200)], cr.color, 0.12, 2);
+      for (const id in U.CRAFT) {
+        const s = U.hzSeries(id);
+        if (!s || s.center !== '500@10') continue;
+        const info = U.CRAFT[id];
+        const n = s.jd.length, stride = Math.max(1, Math.ceil(n / 1800));
+        const pts = [];
+        for (let k = 0; k < n; k += stride) pts.push([s.xyz[k * 3], s.xyz[k * 3 + 1], s.xyz[k * 3 + 2]]);
+        pts.push([s.xyz[(n - 1) * 3], s.xyz[(n - 1) * 3 + 1], s.xyz[(n - 1) * 3 + 2]]);
+        const line = U.makeLine(pts, info.color, 0.11, false);
         line.userData.isOrbit = true;
-        S.add(line); it.line = line;
-        it.viewDist = 30;
-        it.dynamicFacts = () => [['Distanza stimata dal Sole', U.sig(it.pos.length(), 3) + ' UA'], ['Tempo luce', U.fmtLightTime(it.pos.length() * C.AU)]];
+        S.add(line);
+        const it = inst.marker({ id, info, color: info.color, px: 5, halo: 0.4, label: 2, radius: 0, pos: new THREE.Vector3(), viewDist: 3 });
+        it.series = s;
+        it.dynamicFacts = () => {
+          const d = it.pos.length();
+          const earth = inst.byId.terra;
+          const r = U.hzAt(s, E.time.jd);
+          return [['Distanza dal Sole', U.sig(d, 4) + ' UA'], ['Distanza dalla Terra', earth ? U.sig(it.pos.distanceTo(earth.pos), 4) + ' UA' : '—'],
+            ['Segnale radio dalla Terra', earth ? U.fmtLightTime(it.pos.distanceTo(earth.pos) * C.AU) : '—'],
+            ['Posizione', r.inRange ? 'effemeride JPL Horizons' : 'fuori dall\'effemeride: estrapolata']];
+        };
         inst.craft.push(it);
       }
 
-      // Fascia principale (lacune di Kirkwood) e Troiani
-      const gaps = [[2.502, 0.03], [2.825, 0.02], [2.958, 0.015], [3.279, 0.04]];
-      const belt = makeBelt((r) => {
-        const a = 2.1 + r() * 1.2;
-        for (const [g, w] of gaps) if (Math.abs(a - g) < w) return null;
-        if (r() > 0.4 + 0.6 * Math.exp(-Math.pow((a - 2.75) / 0.45, 2))) return null;
-        return { a, e: Math.min(rayleigh(r, 0.08), 0.35), i: Math.min(rayleigh(r, 7), 35), node: r() * 360, peri: r() * 360, M: r() * 360 };
-      }, U.q(32000), { size: 0.012, color: [0.66, 0.6, 0.54], intensity: 0.85, minPx: 1.3, seed: 11 });
-      S.add(belt); inst.belts = [belt];
-      const LJ = 34.39644;
-      const troj = makeBelt((r) => {
-        const side = r() < 0.6 ? 60 : -60;
-        const node = r() * 360, peri = r() * 360;
-        const lam = LJ + side + r.gauss() * 11;
-        return { a: 5.2029 + r.gauss() * 0.03, e: Math.min(rayleigh(r, 0.06), 0.2), i: Math.min(rayleigh(r, 11), 35), node, peri, M: lam - node - peri };
-      }, U.q(6000), { size: 0.025, color: [0.7, 0.54, 0.42], intensity: 0.85, minPx: 1.3, seed: 12 });
-      S.add(troj); inst.belts.push(troj);
+      // Popolazioni reali: asteroidi, Troiani, TNO, Centauri, NEO (JPL SBDB)
+      const real = U.smallBodies();
+      if (real) {
+        const pts = makeBeltGeometry(real.n, (add) => {
+          for (let k = 0; k < real.n; k++) {
+            const cls = CLS[real.classes[real.cls[k]]] || CLS.MBA;
+            const Dkm = U.diameterFromH(real.H[k], cls.p);
+            const s = cls.s * U.clamp(Math.pow(Dkm / cls.D0, 0.35), 0.5, 3);
+            const b = 0.55 + 0.45 * ((k * 2654435761) % 1000) / 1000;
+            add(real.a[k], real.e[k], real.i[k], real.node[k], real.peri[k], real.M0[k], s, cls.c[0] * b, cls.c[1] * b, cls.c[2] * b);
+          }
+        });
+        S.add(pts);
+        inst.belts = [pts];
+      } else inst.belts = [];
 
-      // Fascia di Kuiper (classici freddi/caldi, plutini in risonanza 3:2 con Nettuno) + disco diffuso
-      const LN = -55.12002969, peN = 44.96476227;
-      void peN;
-      const kuiper = makeBelt((r) => {
-        const t = r();
-        if (t < 0.4) { // classici freddi
-          return { a: 42.5 + r() * 4.5, e: Math.min(rayleigh(r, 0.04), 0.12), i: Math.min(rayleigh(r, 2.5), 8), node: r() * 360, peri: r() * 360, M: r() * 360 };
-        } else if (t < 0.65) { // classici caldi
-          return { a: 40 + r() * 8, e: Math.min(rayleigh(r, 0.08), 0.25), i: Math.min(rayleigh(r, 14), 40), node: r() * 360, peri: r() * 360, M: r() * 360 };
-        } else if (t < 0.88) { // plutini: 3λ − 2λN − ϖ ≈ 180°
-          const lam = r() * 360;
-          const varpi = 3 * lam - 2 * LN - 180 + r.gauss() * 45;
-          const node = r() * 360;
-          return { a: 39.45 + r.gauss() * 0.15, e: 0.1 + r() * 0.2, i: Math.min(rayleigh(r, 10), 35), node, peri: varpi - node, M: lam - varpi };
-        }
-        const a = 50 + Math.pow(r(), 2) * 150;
-        return { a, e: 0.3 + r() * 0.45, i: Math.min(rayleigh(r, 18), 50), node: r() * 360, peri: r() * 360, M: r() * 360 };
-      }, U.q(22000), { size: 0.3, color: [0.58, 0.66, 0.8], intensity: 0.8, minPx: 1.3, seed: 13 });
-      S.add(kuiper); inst.belts.push(kuiper);
-
-      // Nube di Oort (statica: periodi di milioni di anni)
+      // Nube di Oort (ipotesi: distribuzione illustrativa)
       {
         const r = U.rng(21), pb = new U.PointBuilder();
         const n = U.q(26000);
@@ -183,8 +185,7 @@
           const b = 0.4 + 0.6 * r();
           pb.push(v[0] * rr, v[2] * rr * flat, v[1] * rr, 0.55 * b, 0.68 * b, 0.9 * b, rr * 0.012);
         }
-        const oort = pb.build({ intensity: 0.5, minPx: 1, maxPx: 3, falloff: 1.1 });
-        S.add(oort);
+        S.add(pb.build({ intensity: 0.5, minPx: 1, maxPx: 3, falloff: 1.1 }));
       }
 
       // Eliosfera: naso verso il flusso interstellare (λ≈255,4°, β≈5,2°)
@@ -211,6 +212,8 @@
       inst.marker({ id: 'fascia', info: U.SOLAR.regions.fascia, pos: new THREE.Vector3(2.75, 0, 0), color: '#a89c8c', px: 4, halo: 0, opacity: 0.6, label: 3, viewDist: 8, labelMinDist: 2, labelMaxDist: 40 });
       inst.troiani = inst.marker({ id: 'troiani', info: U.SOLAR.regions.troiani, pos: new THREE.Vector3(), color: '#b48c70', px: 4, halo: 0, opacity: 0.6, label: 3, viewDist: 15, labelMinDist: 3, labelMaxDist: 60 });
       inst.marker({ id: 'kuiper', info: U.SOLAR.regions.kuiper, pos: new THREE.Vector3(-44, 0, -12), color: '#8ca0c0', px: 4, halo: 0, opacity: 0.6, label: 2, viewDist: 140, labelMinDist: 25, labelMaxDist: 900 });
+      inst.marker({ id: 'neo', info: U.SOLAR.regions.neo, pos: new THREE.Vector3(0.9, 0.08, 0.6), color: '#ff7a5a', px: 3, halo: 0, opacity: 0.5, label: 3, viewDist: 3, labelMinDist: 0.8, labelMaxDist: 8 });
+      inst.marker({ id: 'centauri', info: U.SOLAR.regions.centauri, pos: new THREE.Vector3(0, 1.5, 18), color: '#8cd8a0', px: 3, halo: 0, opacity: 0.5, label: 3, viewDist: 60, labelMinDist: 12, labelMaxDist: 200 });
       inst.marker({ id: 'oort', info: U.SOLAR.regions.oort, pos: new THREE.Vector3(0, 40000, 0), color: '#8cb0e6', px: 5, halo: 0.2, opacity: 0.7, label: 1, viewDist: 3.2e5, labelMinDist: 3000 });
 
       // Pianeta Nove ipotetico (orbita tratteggiata)
@@ -224,7 +227,6 @@
         inst.marker({ id: 'pianeta9', info: U.SOLAR.regions.pianeta9, pos: new THREE.Vector3(ap[0], ap[2], -ap[1]), color: '#d98cd9', px: 5, halo: 0.2, opacity: 0.6, label: 2, viewDist: 2500, labelMinDist: 150, labelMaxDist: 20000 });
       }
 
-      // Anelli di riferimento (1, 10, 100, 1.000, 10.000, 100.000 UA)
       for (const R of [1, 10, 100, 1000, 10000, 100000]) {
         const c = U.makeCircle(R, '#40506e', 0.12, 256);
         c.userData.isOrbit = true;
@@ -236,7 +238,6 @@
       const jd = ctx.jd, E = ctx.E;
       const sunDir = new THREE.Vector3();
       const ex = E.opts.exaggerate ? 600 : 1;
-      const camDist = E.dist();
       for (const it of inst.bodies) {
         const el = U.standish(it.data, jd);
         const p = U.keplerAt(el, jd);
@@ -256,10 +257,9 @@
         it.pos.set(p[0], p[2], -p[1]);
         it.marker.position.copy(it.pos);
       }
-      const year = 2000 + (jd - C.J2000) / 365.25;
       for (const it of inst.craft) {
-        const d = Math.max(0, it.cr.d0 + (year - it.cr.t0) * it.cr.v);
-        it.pos.copy(it.dir).multiplyScalar(d);
+        const p = U.hzAt(it.series, jd).p;
+        it.pos.set(p[0], p[2], -p[1]);
         it.marker.position.copy(it.pos);
       }
       const days = jd - C.J2000;
@@ -267,7 +267,6 @@
       const LJ = (34.39644051 + 3034.74612775 * (days / 36525) + 60) * D;
       inst.troiani.pos.set(5.2 * Math.cos(LJ), 0, -5.2 * Math.sin(LJ));
       inst.troiani.marker.position.copy(inst.troiani.pos);
-      void camDist;
     },
   });
 
@@ -277,10 +276,11 @@
   const hashPhase = (s) => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return ((h >>> 0) % 10000) / 10000 * Math.PI * 2; };
 
   U.defineLevelFamily('planet', (key) => {
-    const p = U.SOLAR.planets.find((x) => x.id === key) || (key === 'plutone' ? U.SOLAR.pluto : null);
+    const p = planetData(key);
     if (!p) return null;
     const moons = U.SOLAR.moons[key] || [];
     const maxDist = planetLevelMax(key);
+    const retro = !!(p.W && p.W[1] < 0);
     return {
       name: p.name, unit: { name: 'km', m: 1e3 },
       minDist: p.R_km * 1.06, maxDist, startDist: p.R_km * 4.2, focus: key, sky: 'ecliptic', extent: maxDist * 20, nearFade: 0,
@@ -292,7 +292,7 @@
       },
       timeControls: true,
       parent: () => ({ level: 'solar', focus: key }),
-      build(inst) {
+      build(inst, E) {
         const S = inst.scene;
         const body = U.makePlanetBody(p, 160);
         S.add(body.group);
@@ -300,37 +300,55 @@
         const it = inst.add({ id: key, info: p, pos: new THREE.Vector3(), radius: p.R_km, viewDist: p.R_km * 4, label: 1 });
         it.dynamicFacts = () => [['Distanza dal Sole (ora)', U.sig(inst.helio ? inst.helio.length() : 0, 4) + ' UA']];
 
-        // basi dei piani equatoriali
+        // basi del piano equatoriale (per satelliti artificiali e lune senza elementi JPL)
         const P = U.eqDirInEclThree(p.pole[0], p.pole[1]).normalize();
         const Peq = U.eqUnit(p.pole[0], p.pole[1]);
         let Q = [-Peq[1], Peq[0], 0]; const nq = Math.hypot(Q[0], Q[1]) || 1; Q = [Q[0] / nq, Q[1] / nq, 0];
         const Qt = U.toThree(U.eqToEcl(Q)).normalize();
         const Wt = new THREE.Vector3().crossVectors(P, Qt).normalize();
         inst.moons = [];
+        const jd0 = E.time.jd;
+        const jwst = key === 'terra' ? U.hzSeries('jwst') : null;
         for (const m of moons) {
-          const mo = { m, a: m.a };
+          const mo = { m };
           const inc = (m.inc || 0) * D;
           const node = hashPhase(m.id + 'n');
           const q1 = Qt.clone().multiplyScalar(Math.cos(node)).add(Wt.clone().multiplyScalar(Math.sin(node)));
           const w1 = new THREE.Vector3().crossVectors(P, q1).normalize();
           mo.u = q1; mo.v = w1.multiplyScalar(Math.cos(inc)).add(P.clone().multiplyScalar(Math.sin(inc))).normalize();
           mo.phase = hashPhase(m.id);
+          mo.jpl = !m.real && m.naif && U.satElements(m.naif) ? m.naif : null;
+          if (m.l2 && jwst) mo.hz = jwst;
+          const pts = [];
           if (m.real === 'moon') {
-            const pts = [];
-            for (let k = 0; k <= 120; k++) { const g = U.moonGeocentric(U.Engine.time.jd + (k / 120) * 27.55); pts.push(new THREE.Vector3(g[0], g[2], -g[1])); }
-            const l = U.makeLineV(pts, '#9aa3b5', 0.3); l.userData.isOrbit = true; S.add(l);
+            for (let k = 0; k <= 120; k++) { const g = U.moonGeocentric(jd0 + (k / 120) * 27.55); pts.push(new THREE.Vector3(g[0], g[2], -g[1])); }
+          } else if (mo.jpl) {
+            const Pd = U.satElements(mo.jpl).P;
+            for (let k = 0; k <= 256; k++) { const g = U.satAt(mo.jpl, jd0 + (k / 256) * Pd, p.pole, retro); pts.push(new THREE.Vector3(g[0], g[2], -g[1])); }
+          } else if (mo.hz) {
+            for (let k = -90; k <= 90; k += 1) { const g = U.hzAt(mo.hz, jd0 + k).p; pts.push(new THREE.Vector3(g[0], g[2], -g[1]).multiplyScalar(U.AU_KM)); }
           } else if (!m.l2) {
-            const pts = [];
             for (let k = 0; k <= 256; k++) { const t = k / 256 * Math.PI * 2; pts.push(mo.u.clone().multiplyScalar(m.a * Math.cos(t)).add(mo.v.clone().multiplyScalar(m.a * Math.sin(t)))); }
-            const l = U.makeLineV(pts, m.craft ? (m.color || '#ffffff') : '#8c96aa', m.craft ? 0.28 : 0.3); l.userData.isOrbit = true; S.add(l);
+          }
+          if (pts.length) {
+            const l = U.makeLineV(pts, m.craft ? (m.color || '#ffffff') : '#8c96aa', m.craft ? 0.28 : 0.3);
+            l.userData.isOrbit = true; S.add(l);
           }
           if (!m.craft) {
-            mo.body = U.makePlanetBody({ id: m.id, R_km: m.R, look: m.look, atmo: m.atmo }, 64);
+            mo.body = U.makePlanetBody({ id: m.id, R_km: m.R, look: m.look, atmo: m.atmo }, m.look && m.look.tex ? 128 : 64);
             S.add(mo.body.group);
           }
-          mo.item = inst.marker({ id: m.id, info: m, pos: new THREE.Vector3(), color: m.color || '#d8dce6', px: m.craft ? 4 : 5, halo: 0.3, label: m.craft ? 3 : 2, radius: m.R, viewDist: m.craft ? Math.max(m.a * 0.25, 2000) : m.R * 5 });
+          const info = mo.jpl ? Object.assign({}, m, { src: (m.src || []).concat(m.src && m.src.includes('jpl_sat') ? [] : ['jpl_sat']) }) : m;
+          mo.item = inst.marker({ id: m.id, info, pos: new THREE.Vector3(), color: m.color || '#d8dce6', px: m.craft ? 4 : 5, halo: 0.3, label: m.craft ? 3 : 2, radius: m.R, viewDist: m.craft ? Math.max(m.a * 0.25, 2000) : m.R * 5 });
           if (m.craft && !m.l2) mo.item.labelMaxDist = m.a * 12;
-          mo.item.dynamicFacts = () => [['Distanza dal centro di ' + p.name, U.sig(mo.item.pos.length(), 4) + ' km']];
+          mo.item.dynamicFacts = () => {
+            const out = [['Distanza dal centro di ' + p.name, U.sig(mo.item.pos.length(), 4) + ' km']];
+            if (mo.jpl) out.push(['Posizione', 'elementi medi JPL propagati alla data']);
+            else if (m.real === 'moon') out.push(['Posizione', 'teoria lunare (Astronomical Almanac)']);
+            else if (mo.hz) out.push(['Posizione', 'effemeride JPL Horizons']);
+            else if (!m.craft) out.push(['Posizione', 'fase orbitale indicativa']);
+            return out;
+          };
           inst.moons.push(mo);
         }
       },
@@ -348,6 +366,8 @@
         for (const mo of inst.moons) {
           const m = mo.m;
           if (m.real === 'moon') { const g = U.moonGeocentric(jd); mo.item.pos.set(g[0], g[2], -g[1]); }
+          else if (mo.jpl) { const g = U.satAt(mo.jpl, jd, p.pole, retro); mo.item.pos.set(g[0], g[2], -g[1]); }
+          else if (mo.hz) { const g = U.hzAt(mo.hz, jd).p; mo.item.pos.set(g[0], g[2], -g[1]).multiplyScalar(U.AU_KM); }
           else if (m.l2) { mo.item.pos.copy(sunDir).multiplyScalar(-m.a); }
           else {
             const th = mo.phase + (jd - C.J2000) / m.P * Math.PI * 2;
@@ -358,8 +378,7 @@
             mo.body.group.position.copy(mo.item.pos);
             // rotazione sincrona: il meridiano 0 guarda il pianeta
             const toP = mo.item.pos.clone().negate().normalize();
-            const up = new THREE.Vector3().crossVectors(mo.u, mo.v).normalize();
-            const z = new THREE.Vector3().crossVectors(toP, up).normalize();
+            const z = new THREE.Vector3().crossVectors(toP, P0(inst, p)).normalize();
             const y = new THREE.Vector3().crossVectors(z, toP).normalize();
             mo.body.spin.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(toP, y, z));
             mo.body.update(jd, sunDir);
@@ -371,4 +390,9 @@
       },
     };
   });
+  // polo del pianeta nel frame THREE (in cache sull'istanza)
+  function P0(inst, p) {
+    if (!inst._pole) { inst._pole = U.eqDirInEclThree(p.pole[0], p.pole[1]).normalize(); if (p.W && p.W[1] < 0) inst._pole.negate(); }
+    return inst._pole;
+  }
 })(window.U);

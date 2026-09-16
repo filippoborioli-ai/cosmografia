@@ -75,6 +75,14 @@ window.U = window.U || {};
     if (info.desc) body.appendChild(h('p', { class: 'prose', text: info.desc }));
     if (info.frontier) body.appendChild(h('section', { class: 'sec' }, [h('h3', { text: 'Cosa non sappiamo ancora' }), h('p', { class: 'prose', text: info.frontier })]));
     if (info.claude) body.appendChild(h('section', { class: 'sec' }, [h('p', { class: 'claude', text: '«' + info.claude + '»' }), h('div', { class: 'claude-sig', text: 'Nota di Claude' })]));
+    const inside = UI.contentsFor(item);
+    for (const group of inside) {
+      const wrap = h('div', { class: 'inside' });
+      for (const e of group.items) {
+        wrap.appendChild(h('button', { class: 'go-chip', title: e.type || '', onclick: () => E.travel(e.level, e.id) }, [e.name]));
+      }
+      body.appendChild(h('section', { class: 'sec' }, [h('h3', { text: group.title }), wrap]));
+    }
     const srcs = (info.src || []).map((k) => U.SRC[k]).filter(Boolean);
     if (srcs.length) {
       const ol = h('ol', { class: 'sources' });
@@ -85,6 +93,40 @@ window.U = window.U || {};
     panel.hidden = false;
     liveItem = item;
   };
+  // --- "Qui dentro": scorciatoie di viaggio verso gli oggetti contenuti -----------------
+  const PLANETS = () => U.SOLAR.planets.concat([U.SOLAR.pluto]).map((p) => ({ level: 'planet:' + p.id, id: p.id, name: p.name, type: p.type }));
+  const ofLevel = (level, ids, src) => ids.map((id) => { const d = src(id); return d ? { level, id, name: d.name, type: d.type } : null; }).filter(Boolean);
+  const mwObj = (id) => U.MW.info[id] || U.MW.objects.find((o) => o.id === id);
+  const lgObj = (id) => U.LG.galaxies.find((o) => o.id === id);
+  const luObj = (id) => U.LOCAL.objects.find((o) => o.id === id) || U.LOCAL.info[id];
+  const nearObj = (id) => U.NEAR.find((o) => o.id === id);
+  function childContents(level) {
+    if (level.startsWith('planet:')) {
+      const key = level.split(':')[1];
+      return [{ title: 'Lune e satelliti', items: (U.SOLAR.moons[key] || []).map((m) => ({ level, id: m.id, name: m.name, type: m.type })) }];
+    }
+    if (level.startsWith('exo:')) {
+      const key = level.split(':')[1];
+      return [{ title: 'Pianeti', items: U.EXO[key].planets.map((p) => ({ level, id: p.id, name: p.name, type: 'Esopianeta' })) }];
+    }
+    if (level === 'solar') return [{ title: 'Pianeti', items: PLANETS() }, { title: 'Altri oggetti', items: ofLevel('solar', ['cerere', 'vesta', 'bennu', 'apophis', 'halley', 'arrokoth', 'voyager1', 'parker', 'atlas3i'], (id) => U.SOLAR.small.find((s) => s.id === id) || U.CRAFT[id]) }];
+    if (level === 'neighborhood') return [{ title: 'Pianeti del Sistema solare', items: PLANETS() }, { title: 'Stelle vicine', items: ofLevel('neighborhood', ['proxima', 'alfacena', 'barnard', 'sirioa', 'epseri', 'tauceti', 'trappist1', 'vega'], nearObj) }];
+    if (level === 'milkyway') return [{ title: 'Pianeti del Sistema solare', items: PLANETS() }, { title: 'Nella Via Lattea', items: ofLevel('milkyway', ['sgra', 'orione', 'pleiadi', 'betelgeuse', 'granchio', 'omegacen', 'cygx1', 'carina'], mwObj) }];
+    if (level === 'localgroup') return [{ title: 'Galassie', items: ofLevel('localgroup', ['m31', 'm33', 'lmc', 'smc', 'sgrdsph', 'm32'], lgObj) }];
+    if (level === 'local') return [{ title: 'Universo locale', items: ofLevel('local', ['virgo', 'm87', 'attrattore', 'laniakea', 'coma', 'perseo', 'shapley', 'cena'], luObj) }];
+    return [];
+  }
+  UI.contentsFor = function (item) {
+    if (item.portal) {
+      const groups = childContents(item.portal.level);
+      // dalla Via Lattea in su, i pianeti restano a portata di clic
+      if (item.portal.level === 'localgroup' || item.portal.level === 'local') groups.unshift({ title: 'Casa: pianeti del Sistema solare', items: PLANETS() });
+      return groups.filter((g) => g.items.length);
+    }
+    if (item.id === 'vialattea') return childContents('milkyway');
+    return [];
+  };
+
   function refreshLive() {
     if (!liveItem || !liveDD || !liveItem.dynamicFacts) return;
     const vals = liveItem.dynamicFacts();
@@ -99,8 +141,10 @@ window.U = window.U || {};
     add('solar', 'sole', S.sun.name, S.sun.type);
     for (const p of S.planets.concat([S.pluto])) add('solar', p.id, p.name, p.type);
     for (const s of S.small) add('solar', s.id, s.name, s.type);
-    for (const c of S.craft) add('solar', c.id, c.name, c.type);
+    for (const id in U.CRAFT || {}) { const s = U.hzSeries && U.hzSeries(id); if (s && s.center === '500@10') add('solar', id, U.CRAFT[id].name, U.CRAFT[id].type); }
     for (const k in S.regions) add('solar', k, S.regions[k].name, S.regions[k].type);
+    const hyg = U.GEN && U.GEN.nearStars;
+    if (hyg) hyg.names.forEach((nm, k) => { if (nm.startsWith('*')) add('neighborhood', 'hyg' + k, nm.slice(1), 'Stella (catalogo HYG)'); });
     for (const key in S.moons) for (const m of S.moons[key]) add('planet:' + key, m.id, m.name, m.type);
     for (const s of U.NEAR) add('neighborhood', s.id, s.name, 'Stella · ' + s.sp);
     for (const key in U.EXO) for (const pl of U.EXO[key].planets) add('exo:' + key, pl.id, pl.name, 'Esopianeta');
@@ -132,7 +176,7 @@ window.U = window.U || {};
         [h('span', { class: 'n', text: e.name }), h('span', { class: 'l', text: SHORT(e.level) }), h('span', { class: 't', text: e.type })])));
       box.hidden = false;
     };
-    const choose = (e) => { input.value = ''; box.hidden = true; input.blur(); E.goToItem(e.level, e.id); };
+    const choose = (e) => { input.value = ''; box.hidden = true; input.blur(); E.travel(e.level, e.id); };
     input.addEventListener('input', () => { sel = 0; render(); });
     input.addEventListener('keydown', (ev) => {
       if (ev.key === 'ArrowDown') { sel = Math.min(sel + 1, hits.length - 1); render(); ev.preventDefault(); }
@@ -229,6 +273,34 @@ window.U = window.U || {};
       if (k === 'l') $('t-labels').click(); else if (k === 'o') $('t-orbits').click(); else if (k === 'c') $('t-const').click();
     });
     $('t-help').addEventListener('click', () => { $('intro').hidden = false; });
+    $('t-home').addEventListener('click', () => E.travel('planet:terra', 'terra'));
+    window.addEventListener('keydown', (e) => {
+      if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      if (e.key.toLowerCase() === 'h') E.travel('planet:terra', 'terra');
+    });
+  }
+
+  // --- Barra di viaggio ----------------------------------------------------------------
+  function bindTrip() {
+    const bar = $('tripbar');
+    $('trip-skip').addEventListener('click', () => E.skipTrip());
+    $('trip-stop').addEventListener('click', () => E.cancelTrip());
+    const render = () => {
+      const t = E.trip;
+      if (!t) { bar.hidden = true; return; }
+      const d = U.getLevelDef(t.levelId);
+      const target = (() => {
+        const inst = E.instances[t.levelId];
+        const it = inst && inst.byId[t.itemId];
+        if (it) return it.name;
+        const hit = INDEX.find((x) => x.level === t.levelId && x.id === t.itemId) || INDEX.find((x) => x.id === t.itemId);
+        return hit ? hit.name : t.itemId;
+      })();
+      $('trip-text').textContent = 'In viaggio verso ' + target + ' · ' + (E.cur.id === t.levelId ? d.name : levelLabel(E.cur.id) + ' → ' + d.name);
+      bar.hidden = false;
+    };
+    E.on('trip', render);
+    E.on('level', render);
   }
 
   // --- Avvio -----------------------------------------------------------------------------
@@ -238,6 +310,8 @@ window.U = window.U || {};
     buildScale();
     bindTime();
     bindToggles();
+    bindTrip();
+    E.on('dip', () => { const cv = $('scene'); cv.classList.remove('dip'); void cv.offsetWidth; cv.classList.add('dip'); });
     $('i-close').addEventListener('click', () => E.select(null));
     E.on('select', UI.renderInfo);
     E.on('fade', (o) => {

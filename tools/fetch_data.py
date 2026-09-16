@@ -94,8 +94,9 @@ def hyg():
         except ValueError:
             ci = 0.65
         if mag <= 6.5:
-            sky += struct.pack('<HhBb', int(round(ra / 360.0 * 65535)) % 65536, int(round(dec / 90.0 * 32767)),
-                               max(0, min(255, int(round((mag + 2.0) * 25)))), max(-128, min(127, int(round(ci * 50)))))
+            sky += struct.pack('<HhBbB', int(round(ra / 360.0 * 65535)) % 65536, int(round(dec / 90.0 * 32767)),
+                               max(0, min(255, int(round((mag + 2.0) * 25)))), max(-128, min(127, int(round(ci * 50)))),
+                               1 if 0 < dist <= 100.0 else 0)
             if r['proper'] and mag <= 3.0:
                 names.append([nsky, r['proper']])
             nsky += 1
@@ -108,12 +109,13 @@ def hyg():
             gz = M[2][0] * x + M[2][1] * y + M[2][2] * z
             q = lambda v: max(-32767, min(32767, int(round(v * 300))))  # 1/300 pc
             near += struct.pack('<hhhhb', q(gx), q(gy), q(gz), max(-32767, min(32767, int(round(absmag * 1000)))), max(-128, min(127, int(round(ci * 50)))))
-            label = r['proper'] or (('Gliese ' + r['gl'].replace('Gl ', '').replace('GJ ', '')) if r['gl'] else '') or \
+            # i nomi propri sono marcati con "*" (usati per le etichette)
+            label = ('*' + r['proper'] if r['proper'] else '') or (('Gliese ' + r['gl'].replace('Gl ', '').replace('GJ ', '')) if r['gl'] else '') or \
                 (r['bf'].strip() if r['bf'] else '') or (('HD ' + r['hd']) if r['hd'] else '') or (('HIP ' + r['hip']) if r['hip'] else '')
             near_names.append(label)
             nnear += 1
     body = 'U.GEN.skyStars = { n: %d, data: "%s", names: %s };\n' % (nsky, b64(bytes(sky)), json.dumps(names, ensure_ascii=False))
-    write_js('hyg_sky.js', 'HYG v4.1 (CC BY-SA 4.0): %d stelle con mag <= 6.5. Record: uint16 RA, int16 Dec, uint8 (mag+2)*25, int8 B-V*50' % nsky, body)
+    write_js('hyg_sky.js', 'HYG v4.1 (CC BY-SA 4.0): %d stelle con mag <= 6.5. Record 7 byte: uint16 RA, int16 Dec, uint8 (mag+2)*25, int8 B-V*50, uint8 entro 100 pc' % nsky, body)
     body = 'U.GEN.nearStars = { n: %d, data: "%s", names: %s };\n' % (nnear, b64(bytes(near)), json.dumps(near_names, ensure_ascii=False))
     write_js('hyg_near.js', 'HYG v4.1 (CC BY-SA 4.0): %d stelle entro 100 pc. Record: int16 x,y,z galattici (1/300 pc), int16 Mag.ass.*1000, int8 B-V*50' % nnear, body)
 
@@ -140,7 +142,7 @@ def sbdb():
     buf = bytearray()
     counts = {}
     for code, filt, limit in SB_CLASSES:
-        q = {'fields': 'a,e,i,om,w,ma,epoch,H', 'limit': str(limit)}
+        q = {'fields': 'a,e,i,om,w,ma,epoch,H', 'limit': str(limit), 'full-prec': '1'}
         q.update(filt)
         url = 'https://ssd-api.jpl.nasa.gov/sbdb_query.api?' + urllib.parse.urlencode(q)
         data = json.loads(get(url, 'sbdb_%s.json' % code))
@@ -168,6 +170,49 @@ def sbdb():
     write_js('sbdb.js', 'JPL SBDB Query API, scaricato il %s. Record 16 byte: float32 a[UA], uint16 e, i, Ω, ω, M(J2000), uint8 classe, uint8 H*10' % time.strftime('%Y-%m-%d'), body)
 
 
+# Corpi minori con nome: elementi osculanti e parametri fisici dal SBDB (API per singolo oggetto)
+NAMED = [
+    ('cerere', '1'), ('pallade', '2'), ('giunone', '3'), ('vesta', '4'), ('igea', '10'), ('psiche', '16'),
+    ('eros', '433'), ('bennu', '101955'), ('apophis', '99942'), ('didymos', '65803'), ('ryugu', '162173'),
+    ('dinkinesh', '152830'), ('eurybates', '3548'), ('arrokoth', '486958'), ('eris', '136199'), ('haumea', '136108'),
+    ('makemake', '136472'), ('sedna', '90377'), ('quaoar', '50000'), ('gonggong', '225088'), ('orco', '90482'),
+    ('halley', '1P'), ('halebopp', 'C/1995 O1'), ('chury', '67P'), ('tempel1', '9P'),
+]
+
+
+def named():
+    print('SBDB oggetti con nome…')
+    out = {}
+    for key, sstr in NAMED:
+        url = 'https://ssd-api.jpl.nasa.gov/sbdb.api?' + urllib.parse.urlencode({'sstr': sstr, 'phys-par': '1', 'full-prec': '1'})
+        try:
+            d = json.loads(get(url, 'sbdb_named_%s.json' % key))
+        except Exception as ex:  # noqa
+            print('   errore', key, ex)
+            continue
+        if 'orbit' not in d:
+            print('   non trovato', key, str(d)[:200])
+            continue
+        el = {x['name']: x['value'] for x in d['orbit']['elements']}
+        phys = {x['name']: x['value'] for x in d.get('phys_par', [])}
+        try:
+            rec = {'full': d['object']['fullname'], 'a': float(el['a']), 'e': float(el['e']), 'i': float(el['i']), 'node': float(el['om']),
+                   'peri': float(el['w']), 'M': float(el['ma']) if el.get('ma') else None, 'tp': float(el['tp']) if el.get('tp') else None,
+                   'epoch': float(d['orbit']['epoch']), 'kind': d['object'].get('kind'),
+                   'diameter': float(phys['diameter']) if phys.get('diameter') else None,
+                   'rot_per': float(phys['rot_per']) if phys.get('rot_per') else None,
+                   'albedo': float(phys['albedo']) if phys.get('albedo') else None,
+                   'H': float(phys['H']) if phys.get('H') else None}
+        except (KeyError, TypeError, ValueError) as ex:
+            print('   dati incompleti', key, ex)
+            continue
+        out[key] = rec
+        print('  ', key, rec['full'], 'a=%.3f e=%.3f' % (rec['a'], rec['e']))
+        time.sleep(0.3)
+    write_js('named.js', 'JPL SBDB API (oggetti singoli), scaricato il %s. Elementi osculanti all\'epoca indicata (JD TDB), gradi.' % time.strftime('%Y-%m-%d'),
+             'U.GEN.named = %s;\n' % json.dumps(out, ensure_ascii=False))
+
+
 # -----------------------------------------------------------------------------
 # JPL: elementi medi dei satelliti
 # -----------------------------------------------------------------------------
@@ -178,15 +223,33 @@ def sats():
     t = re.sub(r'\s*\|\s*', '|', t)
     t = re.sub(r'\|+', '|', t)
     out = {}
-    # blocchi: nome|codice|a|e|w|M|i|node|P|Pw|Pnode|RA|Dec|Tilt|ref
-    num = r'(-?[\d.]+)'
-    pat = re.compile(r'\|([A-Z][A-Za-z\'\- ]{1,20})\|(\d{3})\|' + r'\|'.join([num] * 13) + r'\|')
-    for m in pat.finditer(t):
-        name, code = m.group(1).strip(), m.group(2)
-        v = [float(x) for x in m.groups()[2:]]
-        out[code] = {'name': name, 'a': v[0], 'e': v[1], 'w': v[2], 'M': v[3], 'i': v[4], 'node': v[5], 'P': v[6], 'Pw': v[7], 'Pnode': v[8], 'ra': v[9], 'dec': v[10], 'tilt': v[11]}
+    tok = t.split('|')
+    isnum = lambda x: re.fullmatch(r'-?\d+(\.\d*)?|-|n/a', x) is not None
+    plane = 'laplace'
+    k = 0
+    while k < len(tok) - 3:
+        w = tok[k]
+        if w.startswith('Satellites of'):
+            desc = tok[k + 1].lower()
+            plane = 'ecliptic' if 'ecliptic' in desc else 'equatorial' if 'equatorial' in desc else 'laplace'
+        # riga: Nome | codice NAIF | a | e | ω | M | i | nodo | P | Pω | Pnodo | [RA | Dec | Tilt] | rif
+        if re.fullmatch(r"[A-Z][A-Za-z'\- ]{1,20}", w) and re.fullmatch(r'\d{3}', tok[k + 1]) and isnum(tok[k + 2]):
+            vals = []
+            j = k + 2
+            while j < len(tok) and isnum(tok[j]) and len(vals) < 13:
+                vals.append(tok[j]); j += 1
+            f = lambda x: None if x in ('-', 'n/a') else float(x)
+            v = [f(x) for x in vals]
+            rec = {'name': w, 'plane': plane, 'a': v[0], 'e': v[1], 'w': v[2], 'M': v[3], 'i': v[4], 'node': v[5], 'P': v[6],
+                   'Pw': v[7] if len(v) > 7 else None, 'Pnode': v[8] if len(v) > 8 else None}
+            if plane == 'laplace' and len(v) >= 12:
+                rec.update({'ra': v[9], 'dec': v[10], 'tilt': v[11]})
+            out[tok[k + 1]] = rec
+            k = j
+            continue
+        k += 1
     print('  satelliti trovati:', len(out))
-    write_js('sats.js', 'JPL SSD Planetary Satellite Mean Elements (epoca 2000-01-01.5 TDB, piani di Laplace). Chiave: codice NAIF.',
+    write_js('sats.js', 'JPL SSD Planetary Satellite Mean Elements (epoca 2000-01-01.5 TDB). plane: laplace (polo RA/Dec) | equatorial (equatore del pianeta) | ecliptic. Chiave: codice NAIF.',
              'U.GEN.sats = %s;\n' % json.dumps(out))
 
 
@@ -316,6 +379,7 @@ def textures():
         f.write('// Terra giorno/notte: NASA Blue Marble / Black Marble (pubblico dominio).\n')
         f.write('// Altre texture: Solar System Scope (www.solarsystemscope.com), licenza CC BY 4.0, basate su dati NASA.\n')
         f.write('window.U = window.U || {};\nU.TEX = {};\n' + '\n'.join(lines) + '\n')
+        f.write('// caricato dopo main.js: aggiorna i materiali già creati\nif (U.onTextures) U.onTextures();\n')
     print('  scritto', p, round(os.path.getsize(p) / 1024), 'KB')
 
 
@@ -324,6 +388,8 @@ if __name__ == '__main__':
         hyg()
     if want('sbdb'):
         sbdb()
+    if want('named'):
+        named()
     if want('sats'):
         sats()
     if want('horizons'):

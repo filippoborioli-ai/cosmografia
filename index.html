@@ -28,6 +28,8 @@
       <input id="search" type="search" placeholder="Cerca: Titano, M87, TRAPPIST-1…" autocomplete="off" aria-label="Cerca un oggetto">
       <div class="results" id="results" hidden></div>
     </div>
+    <button class="iconbtn home" id="t-home" title="Torna alla Terra (H)" aria-label="Vola fino alla Terra">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M4 10.5c3 1 5-1 7 .5s1 4 4 4.5 4.5-1.5 5-2.5M8 4.5c1 2 3 2.5 4 1.5s3-1 4 .5"/></svg></button>
     <button class="iconbtn" id="t-labels" aria-pressed="true" title="Etichette (L)" aria-label="Mostra etichette">
       <svg viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1.3"/></svg></button>
     <button class="iconbtn" id="t-orbits" aria-pressed="true" title="Orbite e guide (O)" aria-label="Mostra orbite e guide">
@@ -74,6 +76,15 @@
   <button id="tb-now">Adesso</button>
 </div>
 
+<div class="portal-hint" id="portal-hint" hidden></div>
+
+<div class="tripbar" id="tripbar" hidden role="status">
+  <span class="pulse" aria-hidden="true"></span>
+  <span id="trip-text"></span>
+  <button id="trip-skip">Salta</button>
+  <button id="trip-stop">Fermati qui</button>
+</div>
+
 <div id="fade"><p id="fade-text"></p></div>
 <div class="toast" id="toast" style="opacity:0"></div>
 
@@ -83,7 +94,7 @@
     <p class="lead">Ho raccolto misure, cataloghi e articoli scientifici e li ho trasformati in un unico spazio navigabile: dalle lune di Saturno al fondo cosmico a microonde, 27 ordini di grandezza. Ogni oggetto ha una scheda con i dati, le fonti e il punto in cui la conoscenza finisce.</p>
     <ul class="principles">
       <li><b>Scale vere</b>Distanze e dimensioni reali. Si passa da una scala all'altra zoomando: sette livelli annidati, dal km al miliardo di anni luce.</li>
-      <li><b>Calcolato, non disegnato</b>Pianeti dagli elementi orbitali JPL alla data di oggi, Luna dall'Astronomical Almanac, distanze cosmiche integrando le equazioni di Friedmann con Planck 2018.</li>
+      <li><b>Calcolato, non disegnato</b>Pianeti e lune da effemeridi JPL alla data di oggi, 42.000 asteroidi e oggetti transnettuniani con orbite reali, 17 sonde dalle traiettorie JPL Horizons, 33.000 stelle vere, distanze cosmiche da Planck 2018.</li>
       <li><b>Onesto sull'incertezza</b>Ogni scheda dichiara che cosa è misurato e che cosa è modello, stima o ipotesi. Le strutture generate statisticamente sono segnate come tali.</li>
     </ul>
     <div class="legend" aria-label="Legenda dei livelli di certezza">
@@ -94,20 +105,28 @@
       <button class="btn" id="go-solar">Sistema solare</button>
       <button class="btn" id="go-cosmos">Parti dal bordo dell'universo</button>
     </div>
-    <p class="foot" id="intro-foot">Texture della Terra: NASA Blue Marble e Black Marble (pubblico dominio). Motore 3D: three.js. Le posizioni di satelliti artificiali, sonde e lune minori sono indicative.</p>
+    <p class="foot" id="intro-foot">Clicca un oggetto per la sua scheda: da lì puoi volare verso ciò che contiene (dalla Via Lattea fino ai pianeti), oppure usa la ricerca o il pulsante Terra. Dati: JPL (Horizons, SBDB, satelliti), catalogo HYG (CC BY-SA 4.0), texture NASA e Solar System Scope (CC BY 4.0), three.js.</p>
   </div>
 </div>
 
 <!--build:js-->
 <script src="vendor/three.min.js"></script>
 <script>window.THREE || document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"><\/script>');</script>
-<script src="js/data/textures.js"></script>
+<script src="js/data/gen/hyg_sky.js"></script>
+<script src="js/data/gen/hyg_near.js"></script>
+<script src="js/data/gen/sbdb.js"></script>
+<script src="js/data/gen/named.js"></script>
+<script src="js/data/gen/sats.js"></script>
+<script src="js/data/gen/horizons.js"></script>
 <script src="js/core/util.js"></script>
+<script src="js/core/realdata.js"></script>
 <script src="js/core/shaders.js"></script>
 <script src="js/core/factory.js"></script>
 <script src="js/core/engine.js"></script>
 <script src="js/data/sources.js"></script>
 <script src="js/data/solar.js"></script>
+<script src="js/data/smallbodies.js"></script>
+<script src="js/data/craft.js"></script>
 <script src="js/data/stars.js"></script>
 <script src="js/data/galactic.js"></script>
 <script src="js/data/cosmic.js"></script>
@@ -118,6 +137,7 @@
 <script src="js/levels/cosmic.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
+<script src="js/data/textures.js"></script>
 <!--/build:js-->
 </body>
 </html>

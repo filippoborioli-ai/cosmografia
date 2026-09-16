@@ -160,6 +160,33 @@ a { color: var(--c-mod); }
 .timebar button[aria-pressed="true"] { background: var(--ink); color: var(--void); }
 .timebar svg { width: 14px; height: 14px; fill: currentColor; }
 
+/* --- Viaggio tra le scale ---------------------------------------------------------- */
+.iconbtn.home { color: #8fc4ff; border-color: rgba(143, 196, 255, 0.45); }
+.iconbtn.home:hover { color: #cfe4ff; border-color: rgba(143, 196, 255, 0.8); }
+.inside { display: flex; flex-wrap: wrap; gap: 6px; }
+.go-chip {
+  height: 28px; padding: 0 11px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise);
+  font-size: 12px; cursor: pointer; color: var(--ink); display: inline-flex; align-items: center; gap: 6px;
+}
+.go-chip::after { content: '›'; color: var(--accent); }
+.go-chip:hover { border-color: rgba(243, 192, 107, 0.6); }
+.portal-hint {
+  position: fixed; left: 0; top: 0; pointer-events: none; font-size: 11.5px; color: var(--accent);
+  padding: 3px 9px; border-radius: 11px; background: rgba(10, 12, 20, 0.7); border: 1px solid rgba(243, 192, 107, 0.35); white-space: nowrap;
+}
+.tripbar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 14px; border-radius: 20px; max-width: calc(100vw - 32px);
+  background: var(--panel-solid); border: 1px solid rgba(243, 192, 107, 0.4); font-size: 12.5px; color: var(--ink);
+}
+.tripbar #trip-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tripbar button { height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.tripbar button:first-of-type { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.tripbar .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; flex: none; }
+@keyframes pulse { 50% { opacity: 0.25; } }
+#scene.dip { animation: dip 0.35s ease-out; }
+@keyframes dip { from { opacity: 0.35; } to { opacity: 1; } }
+
 /* --- Dissolvenza, toast, intro --------------------------------------------------- */
 #fade { position: fixed; inset: 0; background: var(--void); opacity: 0; pointer-events: none; transition: opacity 0.16s ease; display: grid; place-items: center; }
 #fade.on { opacity: 1; }
@@ -202,5 +229,6 @@ a { color: var(--c-mod); }
   .crumbs { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
+  #scene.dip, .tripbar .pulse { animation: none; }
   .info, #fade, .toast, .scale .now { transition: none; }
 }

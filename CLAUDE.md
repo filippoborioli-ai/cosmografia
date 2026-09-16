@@ -57,6 +57,34 @@ oggetto cliccato; il sistema deve essere il più reale e accurato possibile. Dev
   Risultati verificati (16–17/09/2026): 0 errori console, 60 fps su Intel UHD, zoom continuo con la rotella
   cosmos → local → localgroup → milkyway → neighborhood → solar → planet:terra e ritorno.
 
+## Dati reali (v2, 17/09/2026) — `python tools/fetch_data.py`
+
+Script unico che scarica e incorpora i dati in `js/data/gen/*.js` (base64 binario compatto, decodificato da
+`js/core/realdata.js`). Cache in `tools/.cache/` (ignorata da git). Opzioni: `--only hyg,sbdb,named,sats,horizons,textures`.
+
+| File generato | Fonte | Contenuto | Uso |
+|---|---|---|---|
+| `hyg_sky.js` | HYG v4.1 (CC BY-SA 4.0) | 8.921 stelle mag ≤ 6,5 (RA, Dec, mag, B−V, flag entro 100 pc) | cielo di sfondo reale (`U.makeSky`) |
+| `hyg_near.js` | HYG v4.1 | 24.705 stelle entro 100 pc (x,y,z galattici, M, B−V, nome; `*` = nome proprio) | vicinato: nuvola 3D con magnitudine apparente calcolata dalla camera (`U.SH.star3dVert`) + item selezionabili con scheda generata al volo (getter `info`) |
+| `sbdb.js` | JPL SBDB Query API | ~42.000 orbite: MBA H<14,2, IMB, OMB, Troiani, tutti i TNO, Centauri, NEO H<19 | fascia/Kuiper/Troiani animati nel vertex shader (le lacune di Kirkwood emergono dai dati) |
+| `named.js` | JPL SBDB API (full-prec) | 25 corpi con nome (Cerere, Vesta, Bennu, Apophis, Arrokoth, Eris, Sedna, Halley, 67P…) | `U.SOLAR.small` in `js/data/smallbodies.js` |
+| `sats.js` | JPL SSD satellite mean elements | 169 lune, epoca J2000; `plane`: laplace (polo RA/Dec) · equatorial · ecliptic | `U.satAt(naif, jd, polo, retro)`; le lune in `solar.js` hanno `naif` |
+| `horizons.js` | JPL Horizons API | 16 sonde/oggetti interstellari eliocentrici + JWST geocentrico | `U.hzAt` interpola; fuori intervallo estrapola (la scheda lo dice) |
+| `../textures.js` | NASA Blue/Black Marble 4K + Solar System Scope (CC BY 4.0) | Terra giorno/notte/nubi, Luna, Mercurio, Venere, Marte, Giove, Saturno, Urano, Nettuno | `look.tex` → shader tipo 11; caricato **dopo** `main.js`, poi `U.onTextures()` aggiorna i materiali |
+
+Note tecniche verificate: la mappa lunare ha il meridiano 0 al centro (u = 0,5 = +X locale) → la faccia visibile guarda la
+Terra con la base `(toP, polo, toP×polo)`. Urano: elementi "equatorial" riferiti al polo di rotazione effettivo, quindi
+il polo IAU va invertito se `W` ha tasso negativo (`retro`). SBDB senza `full-prec=1` arrotonda a 3 cifre.
+
+## Navigazione v2
+
+- **Viaggio tra le scale** `E.travel(levelId, itemId)`: zoom indietro fino al livello comune, poi zoom avanti
+  seguendo i portali (`tripStep` nel ciclo). Barra "In viaggio verso… · Salta · Fermati qui". Rotella/pan annullano.
+  Usato da ricerca, pulsante Terra (tasto H) e dai chip "Qui dentro" delle schede (`UI.contentsFor`): la scheda della
+  Via Lattea elenca i pianeti, quella di un pianeta le lune, ecc.
+- Cambio livello già costruito: istantaneo con breve dissolvenza del canvas (evento `dip`); livello nuovo: schermo di caricamento.
+- Suggerimento "↓ zooma per entrare: …" quando il fuoco è un portale vicino alla soglia (`#portal-hint`).
+
 ## Architettura (ordine di caricamento in `index.html`)
 
 | File | Ruolo |
@@ -141,13 +169,15 @@ Engine: `E.switchTo(id, {focus, dist, dir, select})`, `E.flyTo(item, dist)`, `E.
 
 ## Idee per le prossime versioni (in ordine di valore)
 
-1. Catalogo Gaia/HYG per il vicinato fino a ~100 anni luce (migliaia di stelle) caricato da file JSON incorporato.
-2. Macchina del tempo cosmica: slider di redshift che ricostruisce l'universo a epoche diverse (fattore di scala `a(t)`).
-3. Lune con elementi JPL reali e fasi corrette (almeno galileiane: teoria di Lieske semplificata).
-4. Mappe reali per Luna/Marte/Giove (servono immagini a licenza libera, es. NASA/USGS, incorporate come data URI).
-5. Tour guidati ("dalla Terra a Laniakea in 90 secondi") con narrazione.
-6. Modalità confronto dimensioni (Betelgeuse/Sole/Terra) e scala dei tempi cosmici.
-7. Aggiornare lune e record (numero di lune, galassia più lontana) — sono dati che cambiano ogni anno.
+Fatto in v2: catalogo HYG, lune JPL, mappe reali, asteroidi reali, sonde Horizons, viaggio tra le scale.
+
+1. Macchina del tempo cosmica: slider di redshift che ricostruisce l'universo a epoche diverse (fattore di scala `a(t)`).
+2. Galassie reali per Laniakea: catalogo 2MASS Redshift Survey / Cosmicflows-4 al posto della rete statistica.
+3. Mappe globali delle lune (Galileiane, Titano, Encelado, Plutone/Caronte da USGS/NASA, pubblico dominio).
+4. Tour guidati con narrazione e modalità "confronta dimensioni" (Betelgeuse/Sole/Terra).
+5. Superficie planetaria: mappe ad alta risoluzione a tasselli quando la camera è a meno di 2 raggi.
+6. Satelliti artificiali reali da TLE (CelesTrak) — richiede fetch a runtime o aggiornamento frequente.
+7. Riscaricare periodicamente i dati (`fetch_data.py`): lune, NEO, sonde e record cambiano ogni anno.
 
 ## Pubblicazione
 

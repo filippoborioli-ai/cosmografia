@@ -176,6 +176,8 @@ window.U = window.U || {};
       E.emit('level', inst);
     };
     if (instant || !E.cur) { go(); return; }
+    // livello già costruito: passaggio immediato con una breve dissolvenza del canvas
+    if (E.instances[id]) { go(); E.emit('dip'); return; }
     E.transitioning = true;
     E.emit('fade', { on: true, id });
     setTimeout(() => {
@@ -246,6 +248,77 @@ window.U = window.U || {};
     requestAnimationFrame(wait);
   };
 
+  // --- Viaggio tra le scale ("potenze di dieci") ------------------------------
+  // Catena dei livelli dal più interno al più esterno
+  E.chainOf = function (id) {
+    const out = [];
+    let cur = id, guard = 0;
+    while (cur && guard++ < 20) {
+      out.push(cur);
+      const d = U.getLevelDef(cur);
+      const p = d && d.parent ? d.parent(E.instances[cur] || null) : null;
+      cur = p ? p.level : null;
+    }
+    return out;
+  };
+  // Vola in modo continuo dal punto attuale all'oggetto itemId del livello levelId:
+  // zoom indietro fino al livello comune, poi zoom avanti attraverso i portali.
+  E.travel = function (levelId, itemId) {
+    if (!E.cur || !U.getLevelDef(levelId)) return;
+    if (E.cur.id === levelId) {
+      const it = E.cur.byId[itemId];
+      if (it) { E.select(it); E.trip = { levelId, itemId, path: [levelId], common: levelId, t0: performance.now() }; E.emit('trip', E.trip); }
+      return;
+    }
+    const up = E.chainOf(E.cur.id), down = E.chainOf(levelId);
+    const common = up.find((l) => down.includes(l));
+    if (!common) { E.goToItem(levelId, itemId); return; }
+    const path = down.slice(0, down.indexOf(common) + 1).reverse();
+    E.trip = { levelId, itemId, path, common, t0: performance.now() };
+    E.emit('trip', E.trip);
+  };
+  E.cancelTrip = function () { if (E.trip) { E.trip = null; E.emit('trip', null); } };
+  E.skipTrip = function () { const t = E.trip; if (!t) return; E.cancelTrip(); E.goToItem(t.levelId, t.itemId); };
+  // passo del viaggio, chiamato ogni frame
+  function tripStep(dt) {
+    const T = E.trip, c = E.ctrl, def = E.cur.def;
+    const approach = (from, to, max) => (Math.abs(to - from) <= max ? to : from + Math.sign(to - from) * max);
+    if (performance.now() - T.t0 > 90000) { E.skipTrip(); return; } // salvagente
+    const idx = T.path.indexOf(E.cur.id);
+    if (idx < 0) {
+      // risalita: zoom indietro costante, l'uscita dal livello avviene da sola
+      const rate = 2.2 + 0.5 * Math.max(0, Math.log(def.maxDist) - c.logDist);
+      c.goalLogDist = Math.min(c.goalLogDist + rate * dt, Math.log(def.maxDist) + 0.4);
+      return;
+    }
+    if (E.cur.id === T.levelId) {
+      const it = E.cur.byId[T.itemId];
+      if (!it) { E.cancelTrip(); return; }
+      if (!T.final) {
+        T.final = true;
+        E.select(it);
+        c.offset.copy(c.target).sub(it.pos); c.follow = it; c.goal.copy(it.pos);
+        let want = it.viewDist || Math.max(it.radius * 6, E.dist());
+        if (it.portal) want = Math.max(want, it.portal.enterDist * 1.4); // fermarsi prima di entrare nel livello interno
+        T.goalLog = Math.log(U.clamp(want, def.minDist * 1.01, def.maxDist * 0.95));
+      }
+      if (c.offset.length() < Math.exp(c.logDist) * 0.6) c.goalLogDist = approach(c.goalLogDist, T.goalLog, (2 + 0.4 * Math.abs(T.goalLog - c.logDist)) * dt);
+      if (Math.abs(c.logDist - T.goalLog) < 0.04 && c.offset.length() < Math.exp(c.logDist) * 0.02) E.cancelTrip();
+      return;
+    }
+    // discesa: centra il portale verso il livello successivo e zooma dentro
+    const next = T.path[idx + 1];
+    const nextDef = U.getLevelDef(next);
+    const portal = E.cur.items.find((it) => it.portal && it.portal.level === next && (it.portal.focus || nextDef.focus) === nextDef.focus && it.id === (it.portal.focus || it.id))
+      || E.cur.items.find((it) => it.portal && it.portal.level === next);
+    if (!portal) { E.skipTrip(); return; }
+    if (c.follow !== portal) { c.offset.copy(c.target).sub(portal.pos); c.follow = portal; c.goal.copy(portal.pos); }
+    const want = Math.log(portal.portal.enterDist * 0.3);
+    const dist = Math.exp(c.logDist);
+    if (c.offset.length() < dist * 0.35) c.goalLogDist = approach(c.goalLogDist, want, (2.2 + 0.45 * Math.abs(want - c.logDist)) * dt);
+    else c.goalLogDist = Math.max(c.logDist, Math.min(c.goalLogDist, c.logDist + 0.5));
+  }
+
   // --- Input -----------------------------------------------------------------
   E.bindInput = function () {
     const cv = E.canvas;
@@ -275,6 +348,7 @@ window.U = window.U || {};
       }
       if (down && (down.button === 2 || down.shift)) {
         // panoramica: stacca l'inseguimento
+        E.cancelTrip();
         const dist = E.dist();
         const right = new THREE.Vector3().setFromMatrixColumn(E.camera.matrixWorld, 0);
         const up = new THREE.Vector3().setFromMatrixColumn(E.camera.matrixWorld, 1);
@@ -305,6 +379,7 @@ window.U = window.U || {};
     cv.addEventListener('pointercancel', up);
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
+      E.cancelTrip();
       const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
       E.ctrl.goalLogDist += U.clamp(dy, -120, 120) * 0.0016;
     }, { passive: false });
@@ -397,7 +472,7 @@ window.U = window.U || {};
         let el = pool[used];
         if (!el) { el = document.createElement('div'); el.className = 'lbl'; layer.appendChild(el); pool.push(el); }
         if (el._name !== c.it.name) { el.textContent = c.it.name; el._name = c.it.name; }
-        const cls = 'lbl r' + Math.max(0, c.pr) + (c.it === E.selected ? ' sel' : '') + (c.it.cert === 'ipo' || (c.it.info && c.it.info.cert === 'ipo') ? ' hyp' : '');
+        const cls = 'lbl r' + Math.max(0, c.pr) + (c.it === E.selected ? ' sel' : '') + ((c.it.cert || (c.it.info && c.it.info.cert)) === 'ipo' ? ' hyp' : '');
         if (el._cls !== cls) { el.className = cls; el._cls = cls; }
         el.style.transform = 'translate(' + rx.toFixed(1) + 'px,' + ry.toFixed(1) + 'px)';
         el.style.display = '';
@@ -405,6 +480,18 @@ window.U = window.U || {};
       }
     }
     for (let k = used; k < pool.length; k++) if (pool[k].style.display !== 'none') pool[k].style.display = 'none';
+    // suggerimento: il fuoco è un portale e si è vicini alla soglia
+    const hint = E.hint || (E.hint = document.getElementById('portal-hint'));
+    if (hint) {
+      const f = E.ctrl.follow, dist = E.dist();
+      const s = f && f.portal && !E.trip && dist < f.portal.enterDist * 12 && dist > f.portal.enterDist ? E.project(f.pos, {}) : null;
+      if (s) {
+        const txt = '↓ zooma per entrare: ' + (U.getLevelDef(f.portal.level) || {}).name;
+        if (hint._t !== txt) { hint.textContent = txt; hint._t = txt; }
+        hint.style.transform = 'translate(' + (s.x + 14).toFixed(1) + 'px,' + (s.y + 14).toFixed(1) + 'px)';
+        hint.hidden = false;
+      } else if (!hint.hidden) hint.hidden = true;
+    }
     // anello di selezione
     const ring = E.ring;
     if (ring) {
@@ -435,6 +522,7 @@ window.U = window.U || {};
     const k = 1 - Math.exp(-dt * 5.5);
     // limiti di zoom e transizioni
     const lmin = Math.log(def.minDist), lmax = Math.log(def.maxDist);
+    if (E.trip && !E.transitioning) tripStep(dt);
     if (!E.transitioning) {
       if (c.goalLogDist > lmax) {
         if (c.logDist > lmax - 0.05 && def.parent && def.parent(E.cur)) { E.exitToParent(); }
